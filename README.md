@@ -19,7 +19,7 @@ It aims to make Arch more accessible and UX friendly for just casual users, by p
  <details><summary><b>User customizable</b></summary>Yeah it is opinionated linux, but we still leave a space for your opinion.. we got you !!</details>
  <details><summary><b>Own Bash util scripts</b></summary>These help the system bug free and more fun to use. BTW, u can take some of these for your system, nothing will break !!!</details>
  <details><summary><b>Support !!!</b></summary>On discord, Github Issues, Reddit etc (not setup yet)</details>
- <details><summary><b>Hand written Docs, for the nerdy ones</b></summary></details>
+ <details><summary><b>Hand written Docs, for the nerdy ones</b></summary>Wanna dive deeper to N0ctOS's architecture ?? We have official docs [here(link will be put when available)]</details>
  <b>AND MUCH MORE TO COME !!!</b>
  
  ## What will you get ??
