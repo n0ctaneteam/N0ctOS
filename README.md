@@ -53,9 +53,9 @@ It aims to make Arch more accessible and UX friendly for just casual users, by p
  <details open>
      <summary>DotFiles</summary>
   
-  - [-] hyprland
+  - [x] hyprland
   - [ ] matugen
-  - [-] gtk theming
+  - [x] gtk theming
   - [ ] qt theming
   - [ ] terminal
   - [ ] hypridle (timeout)
