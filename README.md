@@ -52,6 +52,7 @@ It aims to make Arch more accessible and UX friendly for just casual users, by p
  # Roadmap / Checklist
  <details>
      <summary>DotFiles</summary>
+  
   - [ ] hyprland
   - [ ] matugen
   - [ ] gtk theming
@@ -67,6 +68,7 @@ It aims to make Arch more accessible and UX friendly for just casual users, by p
  </details>
  <details>
     <summary>OS (Arch) tweaks</summary>
+  
   - [ ] GRUB menu
   - [ ] os branding
   - [ ] plymouth (splash screen)
@@ -75,6 +77,7 @@ It aims to make Arch more accessible and UX friendly for just casual users, by p
  </details>
  <details>
      <summary>Public/Community Stuff</summary>
+  
   - [ ] TUI installer
   - [ ] website
   - [ ] docs-install
