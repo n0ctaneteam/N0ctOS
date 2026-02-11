@@ -1,0 +1,17 @@
+#!/bin/env bash
+# 
+# 
+# NOT MUCH FOR NOW... BUT PART OS... DONT TOUCH
+# 
+hellwalCacheDir="$HOME/.cache/hellwal"
+
+echo "Reloading theme"
+# hellwal
+cp $hellwalCacheDir/* ~/.config/hellwal/ 
+#GTK
+killall -9 nautilus gnome-clocks file-roller; gsettings set org.gnome.desktop.interface gtk-theme adw-gtk3-dark
+#waybar
+bash $HOME/.config/waybar/scripts/matugen.sh
+#hyprland
+hyprctl reload
+echo "Updated the theme."

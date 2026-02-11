@@ -1,0 +1,47 @@
+#!/bin/env bash
+
+
+# PART OF OS, DONT TOUCH IT
+# 
+# THIS IS THE BACKEND OF WALLPAPER SWITCHING AND MATUGEN+HELLWAL COLOR GENERATION
+
+set -e
+
+export IMG="$1"
+if [[ -z "$IMG" ]]; then
+  echo "Usage: apply-wallpaper.sh <image-path>"
+  exit 1
+fi
+
+if [[ ! -f "$IMG" ]]; then
+  echo "Error: Image not found: $IMG"
+  exit 1
+fi
+
+# Start swww daemon if not running
+if ! pgrep -x swww-daemon >/dev/null; then
+  swww-daemon &
+  sleep 0.5
+fi
+
+# Apply wallpaper
+
+swww img "$IMG" \
+  --transition-type any \
+  --transition-fps 60 \
+  --transition-duration 0.8
+sleep 0.2
+
+echo $n0ctl_neon_mode
+if $n0ctl_neon_mode ; then
+    hellwal -i "$IMG" -m -d --bright-offset 0.1
+else
+    hellwal -i "$IMG" -d --bright-offset 0.1
+fi
+matugen image "$IMG" -c ~/.config/matugen/config.toml --mode dark --show-colors -t scheme-content
+
+n0ctl-themeReload
+
+cp "$IMG" $HOME/Pictures/wallpaper.png
+
+echo "Wallpaper + theme applied."

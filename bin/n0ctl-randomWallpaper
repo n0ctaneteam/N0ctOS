@@ -1,0 +1,27 @@
+#!/bin/env bash
+
+# NOT AN ESSENTIAL PART OF OS...
+# JUST FOR TESTING
+# 
+# IF U WANNA SETUP RANDOM WALLPAPER INSTEAD OF MENU BASED SWITCHER...
+# JUST GO TO HYPR/MODULES/BINDINGS AND CHANGE/ADD THE BIND TO RUN THIS BIN FILE (just write n0ctl-randomWallpaper) 
+
+WALLPAPER_DIR_PATH="$HOME"/Pictures/wallpapers/
+
+mapfile -t wallpapers < <(find "$WALLPAPER_DIR_PATH" -type f)
+
+if (( ${#wallpapers[@]} == 0 )); then
+    echo "No wallpapers found in $WALLPAPER_DIR_PATH"
+    exit 1
+fi
+
+RANDOM_WALLPAPER="${wallpapers[RANDOM % ${#wallpapers[@]}]}"
+
+
+while [[ "$RANDOM_WALLPAPER" == "$OLD" ]]; do
+    RANDOM_WALLPAPER="${wallpapers[RANDOM % ${#wallpapers[@]}]}"
+done
+export OLD="$RANDOM_WALLPAPER"
+
+picked="${wallpapers[$rand_index]}"
+n0ctl-wallSwitch $picked

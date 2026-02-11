@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+
+# SIMPLE PKG UTILITY
+# INSTEAD OF ALIAS TO BRING MORE CONTROL
+
+set -e
+
+# ---- config ----
+PACMAN="pacman"
+AUR_HELPER="paru"
+
+# ---- helpers ----
+usage() {
+  echo "Usage:"
+  echo "  pkg -i [-o] <pkg1> <pkg2> ..."
+  echo "  pkg -r <pkg1> <pkg2> ..."
+  echo "  pkg -u (update all) "
+  exit 1
+}
+
+die() {
+  echo "pkg: $1" >&2
+  exit 1
+}
+
+# ---- argument parsing ----
+INSTALL=false
+REMOVE=false
+ONLY_OFFICIAL=false
+
+while getopts ":irou" opt; do
+  case "$opt" in
+    i) INSTALL=true ;;
+    r) REMOVE=true ;;
+    o) ONLY_OFFICIAL=true ;;
+    u) yay -Syyu --noconfirm --quiet --needed;;
+    *) usage ;;
+  esac
+done
+
+shift $((OPTIND - 1))
+
+# ---- validation ----
+if [[ "$INSTALL" == false && "$REMOVE" == false ]]; then
+  usage
+fi
+
+if [[ "$INSTALL" == true && "$REMOVE" == true ]]; then
+  die "cannot use -i and -r together"
+fi
+
+if [[ "$#" -eq 0 ]]; then
+  die "no packages specified"
+fi
+
+PKGS=("$@")
+
+# ---- install logic ----
+install_pkgs() {
+  local official=()
+  local aur=()
+
+  for pkg in "${PKGS[@]}"; do
+    if $PACMAN -Si "$pkg" &>/dev/null; then
+      official+=("$pkg")
+    else
+      aur+=("$pkg")
+    fi
+  done
+
+  if [[ "${#official[@]}" -gt 0 ]]; then
+    echo "Installing from core/extra:"
+    echo "  ${official[*]}"
+    sudo $PACMAN -S --needed --noconfirm "${official[@]}"
+  fi
+
+  if [[ "$ONLY_OFFICIAL" == true ]]; then
+    if [[ "${#aur[@]}" -gt 0 ]]; then
+      echo "Skipped (AUR omitted):"
+      echo "  ${aur[*]}"
+    fi
+    exit 0
+  fi
+
+  if [[ "${#aur[@]}" -gt 0 ]]; then
+    command -v "$AUR_HELPER" &>/dev/null || die "AUR helper not found: $AUR_HELPER"
+    echo "Installing from AUR:"
+    echo "  ${aur[*]}"
+    $AUR_HELPER -S --needed --noconfirm "${aur[@]}"
+  fi
+}
+
+# ---- remove logic ----
+remove_pkgs() {
+  echo "The following packages will be removed:"
+  for pkg in "${PKGS[@]}"; do
+    echo "  - $pkg"
+  done
+
+  read -rp "Proceed? [y/N]: " confirm
+  case "$confirm" in
+    y|Y|yes|YES) ;;
+    *) echo "Aborted."; exit 0 ;;
+  esac
+
+  sudo $PACMAN -Rs "${PKGS[@]}"
+}
+
+# ---- execution ----
+if [[ "$INSTALL" == true ]]; then
+  install_pkgs
+elif [[ "$REMOVE" == true ]]; then
+  remove_pkgs
+fi

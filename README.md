@@ -1,10 +1,10 @@
 # Welcome to N0ctOS !
 
-Hi ! I am **N0ctane**, with my team. This project is an *open source* project currently ***under active developement***... [Roadmap / Checklist](https://github.com/N0ctaneDev/N0ctOS/tree/main?tab=readme-ov-file#roadmap--checklist)
+Hi ! I am **N0ctane**, with my team. This project is an *open source* project currently ***under active developement***... (roadmap link)
 
 
 # About the Project:
-
+#### Philosophy :
 This is an ***Simplified, Opinionated ARCH Linux Experience***, which **targets** *Developers, New Arch/Linux users, Daily driving linux users, or* **those who dont wanna rice from start.**
 It is a pre-configured *Arch + Hyprland* setup, with additional custom scripts, utilities, and bunch of more stuff...
 

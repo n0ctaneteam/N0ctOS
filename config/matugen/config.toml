@@ -1,0 +1,35 @@
+[config.wallpaper]
+command="swww"
+arguments=["img","--tranition-type","center"]
+set=false
+
+[templates.hyprland]
+input_path = '~/.config/matugen/templates/hyprland-colors.conf'
+output_path = '~/.config/hypr/colors.conf'
+post_hook = 'hyprctl reload'
+
+[templates.kvantum_kvconfig]
+input_path = './templates/kvantum-colors.kvconfig'
+output_path = '~/.config/Kvantum/matugen/matugen.kvconfig'
+
+[templates.kvantum_svg]
+input_path = './templates/kvantum-colors.svg'
+output_path = '~/.config/Kvantum/matugen/matugen.svg'
+
+[templates.gtk3]
+input_path = './templates/gtk-colors.css'
+output_path = '~/.config/gtk-3.0/matugen.css'
+
+[templates.gtk4]
+input_path = './templates/gtk-colors.css'
+output_path = '~/.config/gtk-4.0/matugen.css'
+
+[fallback]
+
+[fallback.colors]
+primary = "#7aa2f7"
+secondary = "#bb9af7"
+background = "#1a1b26"
+surface = "#24283b"
+error = "#f7768e"
+
