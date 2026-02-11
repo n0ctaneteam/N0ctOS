@@ -58,7 +58,7 @@ jobs:
                     exit 1
                   fi
                   
-                  git add dist/*
+                  git add -f dist/*
                   git commit -m "Deploy from website-source-code @ $GITHUB_SHA"
                   git push origin n0ctos-website --force
                   
