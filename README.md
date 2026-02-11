@@ -1,6 +1,6 @@
 # Welcome to N0ctOS !
 
-Hi ! I am **N0ctane**, with my team. This project is an *open source* project currently ***under active developement***... [Roadmap/Checklist](https://github.com/N0ctaneDev/N0ctOS#roadmap--checklist)
+Hi ! I am **N0ctane**, with my team. This project is an *open source* project currently ***under active developement***... [Roadmap/Checklist](https://github.com/N0ctaneDev/N0ctOS?tab=readme-ov-file#roadmap--checklist)
 
 
 # About the Project:
