@@ -13,6 +13,11 @@ jobs:
             contents: write
 
         steps:
+            - name: Checkout Previous build branch
+              uses: actions/checkout@v5
+              with:
+                  ref: n0ctos-website
+                  fetch-depth: 0
             - name: Nuke Previous Build
               run: |
                   git config user.name "github-actions"
