@@ -13,8 +13,16 @@ jobs:
             contents: write
 
         steps:
+            - name: Nuke Previous Build
+              run: |
+                  git config user.name "github-actions"
+                  git config user.email "github-actions@github.com"
+                  git checkout n0ctos-website
+                  git reset --hard
+                  git clean -fdx
+
             - name: Checkout source branch
-              uses: actions/checkout@v4
+              uses: actions/checkout@v5
               with:
                   ref: website-source-code
                   fetch-depth: 0
@@ -31,27 +39,21 @@ jobs:
             - name: Build project
               run: npm run build
 
-            - name: Nuke Previous Build
-              run: |
-                  git config user.name "github-actions"
-                  git config user.email "github-actions@github.com"
-                  git checkout n0ctos-website
-                  git reset --hard
-                  git clean -fdx
-
             - name: Deploy dist to n0ctos-website branch
               run: |
                   git config user.name "github-actions"
                   git config user.email "github-actions@github.com"
                   git checkout website-source-code
                   
+                  npm run build
+                  ls
+                  
                   if [ ! -d "dist" ]; then
                     echo "❌ dist folder not found. Build failed."
                     exit 1
                   fi
-                  ls
                   
-                  git add ./dist/
+                  git add /dist/
                   git commit -m "Deploy from website-source-code @ $GITHUB_SHA"
                   git push origin n0ctos-website --force
                   
