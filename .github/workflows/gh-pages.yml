@@ -15,8 +15,8 @@ jobs:
         steps:
             - name: Global Auth
               run: |
-                  git --global config user.name "github-actions"
-                  git --global config user.email "github-actions@github.com"
+                  git config --global user.name "github-actions"
+                  git config --global user.email "github-actions@github.com"
             - name: Checkout source branch
               uses: actions/checkout@v5
               with:
