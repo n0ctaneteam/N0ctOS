@@ -1,0 +1,33 @@
+name: Build and Deploy Website using GH_PAGES
+
+on:
+    push:
+        branches:
+            - website-source-code
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        permissions:
+            contents: write
+
+        steps:
+            - name: Checkout source branch
+              uses: actions/checkout@v5
+              with:
+                  ref: website-source-code
+                  fetch-depth: 0
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: npm
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Deploy project
+              run: |
+                  git remote add origin https://github.com/N0ctaneDev/N0ctOS.git
+                  npm run deploy
