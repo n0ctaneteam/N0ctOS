@@ -41,18 +41,17 @@ jobs:
 
             - name: Deploy dist to n0ctos-website branch
               run: |
+                  git config user.name "github-actions"
+                  git config user.email "github-actions@github.com"
+                  git checkout website-source-code
+                  
                   if [ ! -d "dist" ]; then
                     echo "❌ dist folder not found. Build failed."
                     exit 1
                   fi
-
                   ls
-
-                  git config user.name "github-actions"
-                  git config user.email "github-actions@github.com"
-                  git checkout website-source-code
-
-                  git add /dist/
+                  
+                  git add ./dist/
                   git commit -m "Deploy from website-source-code @ $GITHUB_SHA"
                   git push origin n0ctos-website --force
                   
