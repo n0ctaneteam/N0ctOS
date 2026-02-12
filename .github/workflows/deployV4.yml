@@ -1,0 +1,56 @@
+on:
+    push:
+        branches:
+            - website-source-code
+permissions:
+    contents: read
+    pages: write
+    id-token: write
+
+jobs:
+    build:
+        permissions:
+            contents: read
+            pages: write
+            id-token: write
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout the branch
+              uses: actions/checkout@v5
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: npm
+            - name: Install Dependencies
+              run: npm ci
+            - name: Build Project
+              run: npm run build
+            - name: Upload artifacts
+              uses: actions/upload-artifact@v6
+              with:
+                  name: "github-pages-deployed"
+                  path: dist
+                  compression-level: 0
+                  include-hidden-files: true
+                  overwrite: true
+    deploy:
+        needs: build
+        permissions:
+            contents: read
+            pages: write
+            id-token: write
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout PROD BRANCH
+              run: |
+                  git config user.name "github-actions"
+                  git config user.email "github-actions@github.com"
+                  git checkout n0ctos-website
+            - name: Download Artifacts
+              uses : actions/download-artifacts@v7
+              with:
+                  name: "github-pages-deployed"
+                  path: ./
+            - name: Push the changes
+              uses: stefanzweifel/git-auto-commit-action@v7
