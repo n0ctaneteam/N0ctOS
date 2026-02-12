@@ -43,12 +43,11 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Checkout PROD BRANCH
-              run: |
-                  git config user.name "github-actions"
-                  git config user.email "github-actions@github.com"
-                  git checkout n0ctos-website
+              uses: actions/checkout@v5
+              with:
+                  ref: 'n0ctos-website'
             - name: Download Artifacts
-              uses : actions/download-artifact@v7
+              uses: actions/download-artifact@v7
               with:
                   name: "github-pages-deployed"
                   path: ./
