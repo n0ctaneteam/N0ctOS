@@ -12,12 +12,12 @@ import Team from './pages/Team'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename="/N0ctOS">
       <Routes>
-        <Route path="/N0ctOS" element={<Home />} />
-        <Route path="/N0ctOS/features" element={<Features />} />
-        <Route path="/N0ctOS/download" element={<Download />} />
-        <Route path="/N0ctOS/team" element={<Team />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/features" element={<Features />} />
+        <Route path="/download" element={<Download />} />
+        <Route path="/team" element={<Team />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,
