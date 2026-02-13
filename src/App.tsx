@@ -686,19 +686,22 @@ function App() {
                   <h3 className="text-2xl font-bold mb-2 text-white">{member.name}</h3>
                   <p className="text-gray-400 mb-2 text-sm">{member.description}</p>
                   <p className="text-primary-400 font-medium mb-4">{member.role}</p>
-                  <motion.a 
-                    href={member.github} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="github-link inline-flex items-center gap-2"
+                  <motion.div
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.9 }}
                   >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599 1.795 1.092 3.365 1.092 2.267 0 4.818-1.854 5.632-4.648.315-1.089-2.143-2.895-2.895-2.752-.052-.098-.105-.203-.105-.329 0-1.98 1.353-4.206 2.23-4.206.919 0 1.517-.588 2.799-1.551 3.771-2.828 2.262-2.892 3.789-1.831 3.789-1.831 0 0 0 .645.364 1.365 1.063 1.063.855 0 1.548-.688 2.815-1.887 3.127-2.815.744-1.607-2.465-3.045-2.465-3.045 0-2.127 1.674-4.857 5.232-4.857z"/>
-                    </svg>
-                    GitHub
-                  </motion.a>
+                    <a 
+                      href={member.github} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="github-link inline-flex items-center gap-2"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599 1.795 1.092 3.365 1.092 2.267 0 4.818-1.854 5.632-4.648.315-1.089-2.143-2.895-2.895-2.752-.052-.098-.105-.203-.105-.329 0-1.98 1.353-4.206 2.23-4.206.919 0 1.517-.588 2.799-1.551 3.771-2.828 2.262-2.892 3.789-1.831 3.789-1.831 0 0 0 .645.364 1.365 1.063 1.063.855 0 1.548-.688 2.815-1.887 3.127-2.815.744-1.607-2.465-3.045-2.465-3.045 0-2.127 1.674-4.857 5.232-4.857z"/>
+                      </svg>
+                      GitHub
+                    </a>
+                  </motion.div>
                 </motion.div>
               ))}
             </motion.div>

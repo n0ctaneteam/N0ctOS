@@ -1,16 +1,14 @@
-import { useState } from 'react'
-import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
+import { motion } from 'framer-motion'
+import Navbar from '../components/Navbar'
+import Footer from '../components/Footer'
 
 function Download() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const { scrollY } = useScroll()
-  const downloadY = useTransform(scrollY, [0, 1000], [0, -100])
-  
   // Optimized particles
   const particles = Array.from({ length: 20 }, (_, i) => ({ id: i }))
 
   return (
-    <div className="min-h-screen bg-dark-primary text-white overflow-hidden relative font-tektur">
+    <div className="min-h-screen bg-dark-primary text-white overflow-x-hidden relative font-tektur">
+      
       {/* Optimized particle background */}
       <div className="fixed inset-0 pointer-events-none">
         {particles.map((particle) => (
@@ -35,101 +33,9 @@ function Download() {
         ))}
       </div>
 
-      <motion.header 
-        className="fixed top-0 w-full bg-dark-primary/80 backdrop-blur-xl border-b border-primary-500/20 z-50 gpu-accelerated"
-        initial={{ y: -100 }}
-        animate={{ y: 0 }}
-        transition={{ type: "spring", stiffness: 100, damping: 20 }}
-      >
-        <nav className="py-6">
-          <div className="container flex justify-between items-center">
-            <motion.div 
-              className="logo"
-              whileHover={{ scale: 1.05 }}
-              transition={{ type: "spring", stiffness: 400, damping: 25 }}
-            >
-              <a href="/" className="text-4xl font-black bg-gradient-to-r from-primary-400 via-primary-500 to-secondary-500 bg-clip-text text-transparent animate-pulse">
-                N0ctOS
-              </a>
-              <div className="text-xs text-primary-400 font-mono mt-1">v2026.1</div>
-            </motion.div>
+      <Navbar />
 
-            <ul className="hidden lg:flex list-none gap-8">
-              {['Home', 'Features', 'Download', 'Team'].map((item, index) => (
-                <motion.li
-                  key={item}
-                  initial={{ y: -20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: index * 0.1, duration: 0.3 }}
-                  whileHover={{ scale: 1.1 }}
-                >
-                  <a 
-                    href={item === 'Home' ? '/' : `#${item.toLowerCase()}`}
-                    className="text-gray-400 font-medium transition-all duration-300 hover:text-primary-400 hover:drop-shadow-[0_0_10px_rgba(0,212,255,0.5)] relative group"
-                  >
-                    {item}
-                    <motion.div
-                      className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-primary-400 to-secondary-500"
-                      whileHover={{ width: '100%' }}
-                      transition={{ duration: 0.3 }}
-                    />
-                  </a>
-                </motion.li>
-              ))}
-            </ul>
-
-            <button 
-              className="lg:hidden flex flex-col gap-1 bg-transparent border-none cursor-pointer p-3"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-            >
-              <motion.span 
-                className="w-8 h-1 bg-white block origin-left"
-                animate={isMenuOpen ? { rotate: 45, x: 10 } : { rotate: 0, x: 0 }}
-                transition={{ duration: 0.3 }}
-              />
-              <motion.span 
-                className="w-8 h-1 bg-white block"
-                animate={{ opacity: isMenuOpen ? 0 : 1 }}
-                transition={{ duration: 0.3 }}
-              />
-              <motion.span 
-                className="w-8 h-1 bg-white block origin-left"
-                animate={isMenuOpen ? { rotate: -45, x: 10 } : { rotate: 0, x: 0 }}
-                transition={{ duration: 0.3 }}
-              />
-            </button>
-
-            <AnimatePresence>
-              {isMenuOpen && (
-                <motion.ul 
-                  className="lg:hidden absolute top-full left-0 w-full bg-dark-secondary/95 backdrop-blur-xl border-t border-primary-500/20 flex flex-col p-6 gap-6"
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  {['Home', 'Features', 'Download', 'Team'].map((item) => (
-                    <motion.li
-                      key={item}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      <a 
-                        href={item === 'Home' ? '/' : `#${item.toLowerCase()}`}
-                        className="text-gray-400 font-medium transition-all duration-300 hover:text-primary-400 text-lg block py-3"
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        {item}
-                      </a>
-                    </motion.li>
-                  ))}
-                </motion.ul>
-              )}
-            </AnimatePresence>
-          </div>
-        </nav>
-      </motion.header>
-
-      <main>
+      <main className="pt-20">
         <section className="py-24 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-primary-500/10 to-accent/10" />
           
@@ -269,6 +175,7 @@ function Download() {
           </div>
         </section>
       </main>
+      <Footer />
     </div>
   )
 }
