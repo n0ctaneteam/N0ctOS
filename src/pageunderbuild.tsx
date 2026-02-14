@@ -1,12 +1,14 @@
 import logo from "./assets/N0ctOS.png";
 import { motion } from "framer-motion";
 
+// import "./test.css";
+
 export const Pageunderbuild = () => {
     // Optimized particles
     const particles = Array.from({ length: 200 }, (_, i) => ({ id: i }));
 
     return (
-        <div className="min-h-screen max-h-screen flex flex-col flex-grow justify-around content-around pb-14">
+        <>
             <div className="fixed inset-0 pointer-events-none -z-10 bg-gradient-to-br from-zinc-950 to-gray-950">
                 {particles.map((particle) => (
                     <motion.div
@@ -29,14 +31,39 @@ export const Pageunderbuild = () => {
                     />
                 ))}
             </div>
-            <div className="flex flex-grow items-center justify-around flex-col bg-transparent font-tektur font-black text-center text-8xl text">
-                <img src={logo} />
-                <h1 className="bg-gradient-to-br from-violet-600 via-blue-600 to-cyan-600 bg-clip-text text-transparent">Page Under Build..</h1>
+            <div className="min-h-dvh  flex flex-col flex-grow justify-between content-between pb-14 min-w-full outline outline-white">
+                <div
+                    className="h-5 min-w-screen"
+                    style={{
+                        backgroundImage:
+                            "repeating-linear-gradient(45deg, #facc15 0px, #facc15 20px, #000 20px, #000 40px)",
+                    }}
+                />
+                <div className="flex-1 flex-col items-center justify-between content-center">
+                    <img src={logo} />
+                    <div className="flex flex-grow-1  flex-col bg-transparent font-tektur font-black text-center ">
+                        <h1 className="text-[clamp(2.5rem,10vw,4.8rem)] leading-none bg-gradient-to-br from-violet-600 via-blue-600 to-cyan-600 bg-clip-text text-transparent">
+                            Page Is Under Development..
+                        </h1>
+                        <div>
+                            <span>Meanwhile, Checkout our </span>
+                            <a
+                                href="https://github.com/n0ctaneteam/N0ctOS"
+                                className="text-xl text-cyan-300 underline underline-offset-4"
+                            >
+                                Github
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div
+                    className="h-5 w-full fixed bottom-0"
+                    style={{
+                        backgroundImage:
+                            "repeating-linear-gradient(45deg, #facc15 0px, #facc15 20px, #000 20px, #000 40px)",
+                    }}
+                />
             </div>
-            <div>
-                <span>Meanwhile, Checkout our </span>
-                <a href="https://github.com/n0ctaneteam/N0ctOS" className="text-xl text-cyan-300 underline underline-offset-4">Github</a>
-            </div>
-        </div>
+        </>
     );
 };
