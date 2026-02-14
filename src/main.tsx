@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route , Navigate} from "react-router-dom";
 import "./index.css";
 import "./App.css";
 
@@ -14,17 +14,16 @@ import { Pageunderbuild } from "./pageunderbuild";
 
 createRoot(document.getElementById("root")!).render(
     <StrictMode>
-        <BrowserRouter basename="/N0ctOS/nonproductionline">
+        <BrowserRouter basename="/N0ctOS">
             <Routes>
-                <Route path="/" element={<Home />} />
+                {/*uncomment the line below, to make the page live*/}
+                {/*<Route path="/" element={<Navigate to="/home" replace />} /> // when page is ready*/}
+                <Route path="/" element={<Pageunderbuild />} /> // for building the App
+                
+                <Route path="/home" element={<Home />} />
                 <Route path="/features" element={<Features />} />
                 <Route path="/download" element={<Download />} />
                 <Route path="/team" element={<Team />} />
-            </Routes>
-        </BrowserRouter>
-        <BrowserRouter basename="/N0ctOS">
-            <Routes>
-                <Route path="/" element={<Pageunderbuild />} />
             </Routes>
         </BrowserRouter>
     </StrictMode>,

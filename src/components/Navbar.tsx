@@ -38,7 +38,7 @@ const Navbar = () => {
                 whileHover={{ scale: 1.1 }}
               >
                 <Link 
-                  to={item === 'Home' ? '/' : `/${item.toLowerCase()}`}
+                  to={`/${item.toLowerCase()}`}
                   className="text-gray-400 font-medium transition-all duration-300 hover:text-primary-400 hover:drop-shadow-[0_0_10px_rgba(0,212,255,0.5)] relative group"
                 >
                   {item}

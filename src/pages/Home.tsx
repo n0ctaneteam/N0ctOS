@@ -8,17 +8,17 @@ function Home() {
   const heroY = useTransform(scrollY, [0, 1000], [0, -200])
   
   // Optimized particles
-  const particles = Array.from({ length: 20 }, (_, i) => ({ id: i }))
+  const particles = Array.from({ length: 60 }, (_, i) => ({ id: i }))
 
   return (
-    <div className="min-h-screen bg-dark-primary text-white overflow-x-hidden relative font-tektur">
+    <div className="min-h-screen bg-transparent text-white overflow-x-hidden relative font-tektur">
       
       {/* Optimized particle background */}
-      <div className="fixed inset-0 pointer-events-none">
+      <div className="fixed inset-0 pointer-events-none -z-10  bg-dark-primary">
         {particles.map((particle) => (
           <motion.div
             key={particle.id}
-            className="absolute w-1 h-1 bg-primary-500 rounded-full opacity-30 gpu-accelerated"
+            className="absolute w-2 h-2 bg-primary-500 rounded-full opacity-30 gpu-accelerated"
             style={{
               left: `${Math.random() * 100}%`,
               top: `${Math.random() * 100}%`,
@@ -29,7 +29,7 @@ function Home() {
               opacity: [0.1, 0.3, 0.1],
             }}
             transition={{
-              duration: Math.random() * 6 + 4,
+              duration: Math.random() * 6 + 3,
               repeat: Infinity,
               ease: "easeInOut",
             }}
