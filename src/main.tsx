@@ -10,20 +10,22 @@ import Features from "./pages/Features";
 import Download from "./pages/Download";
 import Team from "./pages/Team";
 
-// import { Pageunderbuild } from "./pageunderbuild";
+import { Pageunderbuild } from "./pageunderbuild";
 
 createRoot(document.getElementById("root")!).render(
     <StrictMode>
         <BrowserRouter basename="/N0ctOS">
             <Routes>
-                {/*bring the 2nd line to top, to make the page live*/}
-                {/*<Route path="/" element={<Pageunderbuild />} /> // show under dev page*/}
-                <Route path="/" element={<Navigate to="/home" replace />} /> // take it top when page is ready
+                {/*uncomment 1st line and comment the 2nd line, to make the page live*/}
+                {/*<Route path="/" element={<Navigate to="/home" replace />} /> // page is ready*/}
+                <Route path="/" element={<Navigate to="/wall" replace />} /> // page under dev
                 
                 <Route path="/home" element={<Home />} />
                 <Route path="/features" element={<Features />} />
                 <Route path="/download" element={<Download />} />
                 <Route path="/team" element={<Team />} />
+                
+                <Route path="/wall" element={<Pageunderbuild />} /> // show under dev page
             </Routes>
         </BrowserRouter>
     </StrictMode>,
