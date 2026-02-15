@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import logo from "https://res.cloudinary.com/drysfsc1b/image/upload/v1771153631/N0ctOS_ritdbv.png";
+import logo from "/N0ctOS.png";
 import { motion } from "framer-motion";
 
 // import "/src/test.css";
