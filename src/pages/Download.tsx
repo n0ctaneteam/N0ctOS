@@ -1,6 +1,4 @@
 import { motion } from "framer-motion";
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
 
 const LOGO_URL = "https://res.cloudinary.com/drysfsc1b/image/upload/v1771153631/N0ctOS_ritdbv.png";
 
@@ -69,15 +67,9 @@ function Download() {
                       {
                         icon: "💾",
                         label: "RAM",
-                        value: "4GB (8GB recommended)",
+                        value: "4GB (8GB+ recommended)",
                       },
-                      { icon: "💿", label: "Storage", value: "30GB SSD" },
-                      {
-                        icon: "⚡",
-                        label: "Processor",
-                        value: "64-bit Quad Core",
-                      },
-                      { icon: "🎮", label: "Graphics", value: "OpenGL 4.0+" },
+                      { icon: "💿", label: "Storage", value: "30GB+" },
                     ].map((req) => (
                       <motion.div
                         key={req.label}
@@ -148,12 +140,12 @@ function Download() {
                         <span className="btn-maximize shadow-lg shadow-green-500/50"></span>
                       </div>
                       <div className="terminal-title text-primary-400 font-mono">
-                        n0ctos@download-installer
+                        n0ctos@n1tro-installer
                       </div>
                     </div>
                     <div className="terminal-body bg-dark-secondary/90 backdrop-blur">
                       <motion.div
-                        className="terminal-line text-primary-400"
+                        className="terminal-line text-primary-400 text-nowrap overflow-hidden"
                         initial={{ width: 0 }}
                         whileInView={{ width: "100%" }}
                         viewport={{ once: true }}
@@ -203,7 +195,7 @@ function Download() {
               </motion.div>
 
               <div className="download-buttons text-center">
-                <motion.div
+                {/*<motion.div
                   className="relative inline-block"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -254,7 +246,7 @@ function Download() {
                       ease: "easeInOut",
                     }}
                   />
-                </motion.div>
+                </motion.div>*/}
 
                 <div className="mt-6 space-y-3">
                   <div className="flex items-center justify-center gap-2 text-sm text-gray-400">

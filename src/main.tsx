@@ -1,4 +1,4 @@
-const isPublic: boolean = false;
+const isPublic: boolean = true;
 // this variable decides if the wall is to be shown or not...
 // true: publishes the app to isPublic
 // false: replaces everything with wall(pageunderbuild)
@@ -13,13 +13,14 @@ import "./index.css";
 // Import pages
 import { App } from "./App";
 import { Pageunderbuild } from "./pageunderbuild";
+import ScrollToTop from "./components/ScrollToTop";
 
 // import './test.css'
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter basename="/N0ctOS">
-      <>{isPublic ? <App /> : <Pageunderbuild />}</> {/*decides what to render*/}
+      <><ScrollToTop/>{isPublic ? <App /> : <Pageunderbuild />}</> {/*decides what to render*/}
     </BrowserRouter>
   </StrictMode>,
 );

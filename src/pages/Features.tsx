@@ -32,6 +32,54 @@ const features_list = [
       "Comprehensive development environment with modern tools and libraries",
     color: "from-indigo-400 to-purple-500",
   },
+  {
+    icon: "📱",
+    title: "Own Apps & Utils",
+    description: "We have made some own apps, to simplify linux... reduce terminal headache",
+    color:""
+  },
+  {
+    icon: "📖",
+    title: "Docs for Everything",
+    description: "We have curated docs for N0ctOS, apps, Arch, Hyprland, FAQs and much more",
+    color:""
+  },
+  {
+    icon: "👥",
+    title: "Community support",
+    description: "Discord Server, Reddit, Github Issues... You will get help from everywhere",
+    color:""
+  },
+  {
+    icon: "💪",
+    title: "Battle-tested Stable",
+    description: "We do 3 step Stability check, before releasing a major Version",
+    color:""
+  },
+  {
+    icon: "🧰",
+    title: "Anyone can Fix us",
+    description: "Found a bug ? Just report us, or fix yourself and merge your fix",
+    color:""
+  },
+  {
+    icon: "👶",
+    title: "Easy For Beginners",
+    description: "Easy install, Easy daily drive, Easy fixes... Arch made simple",
+    color:""
+  },
+  {
+    icon: "💻",
+    title: "Customized Desktop",
+    description: "We have done all customizations, that you need",
+    color:""
+  },
+  {
+    icon: "🚫",
+    title: "No AI, No BLOAT",
+    description: "We only give Essentials, You install what you need",
+    color:""
+  },
 ];
 
 function Features() {

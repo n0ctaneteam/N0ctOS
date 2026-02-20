@@ -5,6 +5,12 @@ import Footer from "../components/Footer";
 
 const LOGO_URL = "https://res.cloudinary.com/drysfsc1b/image/upload/v1771153631/N0ctOS_ritdbv.png";
 
+const Quick_Links=[
+  { icon: "📥", title: "Download", desc: "Get N0ctOS" },
+  { icon: "🚀", title: "Quick Start", desc: "5 min setup" },
+  { icon: "💬", title: "Community", desc: "Get help" },
+]
+
 const docsSections = [
   {
     title: "Getting Started",
@@ -107,11 +113,7 @@ function Docs() {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.3, duration: 0.5 }}
           >
-            {[
-              { icon: "📥", title: "Download", desc: "Get N0ctOS" },
-              { icon: "🚀", title: "Quick Start", desc: "5 min setup" },
-              { icon: "💬", title: "Community", desc: "Get help" },
-            ].map((item, i) => (
+            {Quick_Links.map((item, i) => (
               <motion.div
                 key={item.title}
                 className="bg-dark-secondary/50 border border-gray-800 rounded-xl p-6 hover:border-primary-500/50 transition-all cursor-pointer group"

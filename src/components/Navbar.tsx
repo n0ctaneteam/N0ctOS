@@ -9,12 +9,12 @@ const Navbar = () => {
 
   return (
     <motion.header
-      className="BAR fixed top-1px w-dvw h-[clamp(50px,10dvh,10px)] bg-dark-primary/80 backdrop-blur-xl border-b border-primary-500/20 z-50"
+      className="BAR fixed top-0px justify-center content-center w-dvw h-[clamp(50px,10dvh,10px)] bg-dark-primary/80 backdrop-blur-sm border-b border-primary-500/20 z-50"
       initial={{ y: -100 }}
       animate={{ y: 0 }}
       transition={{ type: "spring", stiffness: 100, damping: 20 }}
     >
-      <nav className="flex py-1 px-[clamp(10px,10rem,20px)] justify-center content-center max-h-full">
+      <nav className="flex py-1 h-full px-[clamp(10px,10rem,20px)] justify-center content-center items-center max-h-full">
         <div className="flex flex-grow justify-between gap-7 items-center w-[clamp(0px,100vdw,500px)]">
           {/* Logo */}
           <motion.div
@@ -90,7 +90,7 @@ const Navbar = () => {
         <AnimatePresence>
           {isMenuOpen && (
             <motion.ul
-              className="lg:hidden absolute top-full left-0 w-full bg-dark-secondary/95 backdrop-blur-xl border-t border-primary-500/20 flex flex-col p-6 gap-6"
+              className="lg:hidden absolute top-full left-0 w-full bg-gradient-to-br from-violet-950 via-slate-950/80 to-slate-950/60 backdrop-blur-3xl border-t border-primary-500/20 flex flex-col p-6 gap-6"
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
