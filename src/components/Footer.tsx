@@ -5,7 +5,7 @@ const LOGO_URL = "https://res.cloudinary.com/drysfsc1b/image/upload/v1771153631/
 
 const Footer = () => {
   return (
-    <footer className="bg-dark-primary/80 backdrop-blur-xl border-t border-primary-500/20 relative z-10 fixed bottom-0">
+    <footer className="bg-dark-primary/80 backdrop-blur-xl border-t border-primary-500/20 z-10 fixed bottom-0">
       <div className="container py-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Brand with Logo Only */}
