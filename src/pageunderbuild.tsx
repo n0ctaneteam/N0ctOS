@@ -7,11 +7,11 @@ export const Pageunderbuild = () => {
   const particles = Array.from({ length: 200 }, (_, i) => ({ id: i }));
 
   const messages = [
-    "Wait while the chef's cooking !!! 💀",
-    "WAIT BRUH, I AM NOT EVEN BORN !!! 😭",
-    "My Owner is hiding me yawr 💅..",
-    "403: access forbidden — skill issue 😅",
-    "GROW UP, website ! GROW UP !! 🤣"
+    "Wait while the chef's cooking !!!",
+    "WAIT BRUH, I AM NOT EVEN BORN !!!",
+    "My Owner is hiding me yawr..",
+    "403: access forbidden — skill issue",
+    "GROW UP, website ! GROW UP !!"
   ];
 
   const randomMessage = messages[Math.floor(Math.random() * messages.length)];
@@ -57,7 +57,7 @@ export const Pageunderbuild = () => {
               {randomMessage}
             </h1>
             <div>
-              <span>Meanwhile, Checkout our </span>
+              <span>☠️\nMeanwhile, Checkout our </span>
               <a
                 href="https://github.com/n0ctaneteam/N0ctOS"
                 className="text-xl text-purple-300 underline underline-offset-4"
