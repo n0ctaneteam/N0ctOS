@@ -6,6 +6,16 @@ export const Pageunderbuild = () => {
   // Optimized particles
   const particles = Array.from({ length: 200 }, (_, i) => ({ id: i }));
 
+  const messages = [
+    "Wait while the chef's cooking !!! 💀",
+    "WAIT BRUH, I AM NOT EVEN BORN !!! 😭",
+    "My Owner is hiding me yawr 💅..",
+    "403: access forbidden — skill issue 😅",
+    "GROW UP, website ! GROW UP !! 🤣"
+  ];
+
+  const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+
   return (
     <>
       <div className="fixed inset-0 pointer-events-none -z-10 bg-gradient-to-br from-zinc-950 to-gray-950">
@@ -44,7 +54,7 @@ export const Pageunderbuild = () => {
           </div>
           <div className="flex flex-grow-1  flex-col bg-transparent font-tektur font-black text-center ">
             <h1 className="text-[clamp(2.5rem,10vw,4.8rem)] leading-none bg-gradient-to-br from-violet-600 via-purple-600 to-purple-500 bg-clip-text text-transparent">
-              Page Is Under Development..
+              {randomMessage}
             </h1>
             <div>
               <span>Meanwhile, Checkout our </span>
