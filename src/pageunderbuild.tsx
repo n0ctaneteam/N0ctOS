@@ -56,8 +56,9 @@ export const Pageunderbuild = () => {
             <h1 className="text-[clamp(2.5rem,10vw,4.8rem)] leading-none bg-gradient-to-br from-violet-600 via-purple-600 to-purple-500 bg-clip-text text-transparent">
               {randomMessage}
             </h1>
+            <h2>☠️💀☠️</h2>
             <div>
-              <span>☠️\nMeanwhile, Checkout our </span>
+              <span>Meanwhile, Checkout our </span>
               <a
                 href="https://github.com/n0ctaneteam/N0ctOS"
                 className="text-xl text-purple-300 underline underline-offset-4"
