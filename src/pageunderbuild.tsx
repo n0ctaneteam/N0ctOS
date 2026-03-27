@@ -56,7 +56,7 @@ export const Pageunderbuild = () => {
             <h1 className="text-[clamp(2.5rem,10vw,4.8rem)] leading-none bg-gradient-to-br from-violet-600 via-purple-600 to-purple-500 bg-clip-text text-transparent">
               {randomMessage}
             </h1>
-            <h1 className="text-[clamp(2rem,8vw,4rem)]>☠️💀☠️</h1>
+            <h1 className="text-[clamp(2rem,8vw,4rem)]">☠️💀☠️</h1>
             <div>
               <span>Meanwhile, Checkout our </span>
               <a
