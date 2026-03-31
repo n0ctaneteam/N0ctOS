@@ -32,7 +32,6 @@ export function App() {
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/30 selection:text-primary transition-colors duration-300">
       <Navbar theme={theme} toggleTheme={toggleTheme} />
       
-      <main>
         <Routes>
         <Route path="/" element={<Navigate to="/home" replace/>}/>
         <Route path="/home" element={<Home />} />
@@ -44,7 +43,6 @@ export function App() {
         <Route path="*" element={<Navigate to="/notfound" replace/>} />
         <Route path="/notfound" element={<NotFound/>}/>
       </Routes>
-      </main>
 
       <Footer />
     </div>
