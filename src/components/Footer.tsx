@@ -1,91 +1,50 @@
-import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link } from "react-router-dom";
+import { Github, Cpu } from "lucide-react";
 
-const LOGO_URL = "https://res.cloudinary.com/drysfsc1b/image/upload/v1771153631/N0ctOS_ritdbv.png";
-
-const Footer = () => {
+export default function Footer() {
   return (
-    <footer className="bg-dark-primary/80 backdrop-blur-xl border-t border-primary-500/20 z-10 fixed bottom-0">
-      <div className="container py-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          {/* Brand with Logo Only */}
-          <div className="flex flex-col items-start">
-            <Link to="/" className="mb-4">
-              <img 
-                src={LOGO_URL} 
-                alt="N0ctOS" 
-                className="object-contain"
-              />
-            </Link>
-            <p className="text-gray-400 text-sm leading-relaxed">
-              The Future of Linux. Built for developers, designed for humans.
-            </p>
+    <footer className="bg-muted/50 border-t border-white/5 py-12 px-6">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 font-bold text-xl tracking-tighter">
+            <Cpu className="w-6 h-6 text-primary" />
+            <span>N0ctOS</span>
           </div>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            A performance-driven, Arch-based Linux distribution designed for the modern user. Sleek, fast, and nocturnal.
+          </p>
+        </div>
+        
+        <div>
+          <h4 className="font-semibold mb-4">Project</h4>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            <li><Link to="/features" className="hover:text-primary transition-colors">Features</Link></li>
+            <li><Link to="/download" className="hover:text-primary transition-colors">Download</Link></li>
+            <li><Link to="/docs" className="hover:text-primary transition-colors">Documentation</Link></li>
+          </ul>
+        </div>
 
-          {/* Product Links */}
-          <div>
-            <h4 className="text-white font-semibold mb-4">Product</h4>
-            <ul className="space-y-2">
-              <li><Link to="/features" className="text-gray-400 hover:text-primary-400 transition-colors text-sm">Features</Link></li>
-              <li><Link to="/download" className="text-gray-400 hover:text-primary-400 transition-colors text-sm">Download</Link></li>
-              <li><Link to="/docs" className="text-gray-400 hover:text-primary-400 transition-colors text-sm">Documentation</Link></li>
-              <li><Link to="/team" className="text-gray-400 hover:text-primary-400 transition-colors text-sm">Team</Link></li>
-            </ul>
-          </div>
+        <div>
+          <h4 className="font-semibold mb-4">Community</h4>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            <li><a href="#" className="hover:text-primary transition-colors">Discord</a></li>
+            <li><a href="#" className="hover:text-primary transition-colors">Forum</a></li>
+            <li><a href="#" className="hover:text-primary transition-colors">Wiki</a></li>
+          </ul>
+        </div>
 
-          {/* Resources Links */}
-          <div>
-            <h4 className="text-white font-semibold mb-4">Resources</h4>
-            <ul className="space-y-2">
-              <li><a href="https://github.com/n0ctaneteam" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-primary-400 transition-colors text-sm">GitHub</a></li>
-              <li><a href="#" className="text-gray-400 hover:text-primary-400 transition-colors text-sm">Release Notes</a></li>
-              <li><a href="#" className="text-gray-400 hover:text-primary-400 transition-colors text-sm">Roadmap</a></li>
-              <li><a href="#" className="text-gray-400 hover:text-primary-400 transition-colors text-sm">Community</a></li>
-            </ul>
-          </div>
-
-          {/* Connect */}
-          <div>
-            <h4 className="text-white font-semibold mb-4">Connect</h4>
-            <div className="flex gap-4">
-              <motion.a
-                href="https://github.com/n0ctaneteam"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-10 h-10 rounded-full bg-dark-secondary border border-gray-700 flex items-center justify-center text-gray-400 hover:text-primary-400 hover:border-primary-500/50 transition-all"
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.2 11.37.6.1.82-.27.82-.6v-2.2c-3.34.73-4.04-1.6-4.04-1.6-.55-1.4-1.33-1.77-1.33-1.77-1.09-.75.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.84 2.8 1.3 3.49 1 .1-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.3.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.17 0 0 1-.33 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.56 3.29-1.23 3.29-1.23.66 1.65.24 2.87.12 3.17.77.84 1.24 1.9 1.24 3.22 0 4.6-2.8 5.63-5.48 5.92.43.37.82 1.1.82 2.22v3.3c0 .32.22.7.82.58C20.56 21.8 24 17.3 24 12c0-6.63-5.37-12-12-12z"/>
-                </svg>
-              </motion.a>
-              <motion.a
-                href="#"
-                className="w-10 h-10 rounded-full bg-dark-secondary border border-gray-700 flex items-center justify-center text-gray-400 hover:text-primary-400 hover:border-primary-500/50 transition-all"
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                </svg>
-              </motion.a>
-              <motion.a
-                href="#"
-                className="w-10 h-10 rounded-full bg-dark-secondary border border-gray-700 flex items-center justify-center text-gray-400 hover:text-primary-400 hover:border-primary-500/50 transition-all"
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
-                </svg>
-              </motion.a>
-            </div>
+        <div>
+          <h4 className="font-semibold mb-4">Social</h4>
+          <div className="flex gap-4">
+            <a href="https://github.com/n0ctaneteam/N0ctOS" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+              <Github className="w-5 h-5" />
+            </a>
           </div>
         </div>
       </div>
+      <div className="max-w-7xl mx-auto mt-12 pt-8 border-t border-white/5 text-center text-xs text-muted-foreground">
+        &copy; {new Date().getFullYear()} N0ctOS Project. Built on Arch Linux.
+      </div>
     </footer>
   );
-};
-
-export default Footer;
+}
