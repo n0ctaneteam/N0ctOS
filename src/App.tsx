@@ -37,6 +37,7 @@ export function App() {
       <main>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/home" element={<Home />} />
           <Route path="/features" element={<Features />} />
           <Route path="/download" element={<Download />} />
           <Route path="/docs" element={<Docs />} />
