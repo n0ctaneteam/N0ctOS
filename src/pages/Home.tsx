@@ -1,217 +1,102 @@
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
+import { Link } from "react-router-dom";
+import { Cpu, ChevronRight, Github, Terminal } from "lucide-react";
 
-// dont add Navbar and Footer on indivisual pages bro
-
-const Tagline = "Linux, Made Simple & Beautiful";
-const Description = "Experience quantum-level performance with our Arch-based linux distribution. Built for developers, designed for humans, optimized for 2026.";
-
-function Home() {
+export default function Home() {
   return (
-    <div className=" text-white font-tektur flex flex-col w-dvw">
-      <main className="flex-grow py-4">
-        <section className=" h-auto flex items-center px-4 relative ">
-          <div className="container grid lg:grid-cols-2 gap-16 items-center relative z-20">
-            <motion.div
-              className="hero-content"
-              initial={{ x: -100, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ duration: 0.8, damping: 25 }}
-            >
-              <motion.div
-                className="inline-flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded-full px-4 py-2 mb-3"
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.5, duration: 0.5 }}
+    <div className="relative overflow-hidden">
+      {/* Hero Section */}
+      <section className="pt-40 pb-20 px-6">
+        <div className="max-w-7xl mx-auto text-center relative z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+          >
+            <h1 className="text-6xl md:text-8xl lg:text-9xl font-bold tracking-tighter mb-8 leading-[0.9]">
+              ARCH MADE <br />
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary via-secondary to-accent uppercase">Simple.</span>
+            </h1>
+            <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-12 leading-relaxed font-medium">
+              N0ctOS is a performance-driven, Arch-based Linux distribution designed for those who value speed, aesthetics, and simplicity.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
+              <Link
+                to="/download"
+                className="group bg-white text-black px-10 py-4 rounded-2xl font-bold text-lg flex items-center gap-2 hover:bg-primary transition-all hover:scale-105"
               >
-                <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
-                <span className="text-yellow-400 text-sm font-medium">
-                  Work in Progress
-                </span>
-              </motion.div>
-
-              <motion.div
-                className="mb-2"
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.1, duration: 0.6 }}
+                Join the Waitlist
+                <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </Link>
+              <a
+                href="https://github.com/n0ctaneteam/N0ctOS"
+                className="flex items-center gap-2 text-muted-foreground hover:text-white transition-colors font-medium"
               >
-                <img
-                  src="https://res.cloudinary.com/drysfsc1b/image/upload/v1771153631/N0ctOS_ritdbv.png"
-                  alt="N0ctOS"
-                  className="object-contain drop-shadow-[0_0_40px_rgba(139,92,246,0.5)]"
-                />
-              </motion.div>
+                <Github className="w-6 h-6" />
+                View Source
+              </a>
+            </div>
+          </motion.div>
+        </div>
 
-              <motion.p
-                className="text-2xl md:text-3xl text-primary-400 font-bold mb-2"
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.3, duration: 0.6 }}
-              >
-                {Tagline}
-              </motion.p>
+        {/* Background Elements */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full -z-10 pointer-events-none">
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-[120px] animate-pulse" />
+          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-secondary/20 rounded-full blur-[120px] animate-pulse delay-700" />
+        </div>
+      </section>
 
-              <motion.p
-                className="text-lg text-gray-400 mb-8 leading-relaxed"
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.4, duration: 0.6 }}
-              >
-                {Description}
-              </motion.p>
+      {/* Stats Section Removed - Project in Early Stage */}
 
-              <motion.div
-                className="flex flex-wrap gap-4 justify-between"
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.5, duration: 0.6 }}
-              >
-                <motion.a
-                  href="#download"
-                  className="btn btn-primary flex-grow justify-center relative overflow-hidden group"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <span className="relative z-10 flex items-center gap-2">
-                    <span className="text-xl">🚧</span>
-                    Join Development
-                  </span>
-                </motion.a>
-
-                <motion.a
-                  href="#features"
-                  className="btn btn-secondary flex-grow justify-center border-2 border-primary-500/50 hover:border-primary-400"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="text-xl">🚀</span>
-                    Explore Features
-                  </span>
-                </motion.a>
-              </motion.div>
-
-              <motion.div
-                className="flex gap-6 mt-8"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.8, duration: 1 }}
-              >
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-primary-400">ARCH</div>
-                  <div className="text-sm text-gray-500">But easy-peasy</div>
+      {/* Terminal Preview */}
+      <section className="py-32 px-6">
+        <div className="max-w-5xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            className="bg-[#0c0c0c] rounded-3xl border border-white/10 shadow-2xl overflow-hidden"
+          >
+            <div className="h-10 bg-white/5 flex items-center px-4 gap-2">
+              <div className="w-3 h-3 rounded-full bg-red-500/50" />
+              <div className="w-3 h-3 rounded-full bg-yellow-500/50" />
+              <div className="w-3 h-3 rounded-full bg-green-500/50" />
+              <div className="ml-4 text-xs text-muted-foreground font-mono">n0ctos@terminal ~</div>
+            </div>
+            <div className="p-8 font-mono text-sm space-y-2">
+              <div className="flex gap-2">
+                <span className="text-primary">➜</span>
+                <span className="text-secondary">~</span>
+                <span>neofetch</span>
+              </div>
+              <div className="flex gap-8 pt-4">
+                <pre className="text-primary leading-tight">
+{`      /\\
+     /  \\
+    /\\   \\
+   /  \\   \\
+  /    \\   \\
+ /      \\   \\
+/________\\___\\`}
+                </pre>
+                <div className="space-y-1">
+                  <div className="font-bold text-primary">n0ctos@night-owl</div>
+                  <div className="text-muted-foreground">-----------------</div>
+                  <div><span className="text-secondary">OS:</span> N0ctOS Linux x86_64</div>
+                  <div><span className="text-secondary">Host:</span> Custom Build</div>
+                  <div><span className="text-secondary">Kernel:</span> 6.7.9-arch1-1</div>
+                  <div><span className="text-secondary">Uptime:</span> 4 days, 12 hours</div>
+                  <div><span className="text-secondary">Packages:</span> 842 (pacman)</div>
+                  <div><span className="text-secondary">Shell:</span> zsh 5.9</div>
+                  <div><span className="text-secondary">Resolution:</span> 3840x2160</div>
+                  <div><span className="text-secondary">DE:</span> N0ct-DE (Plasma based)</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-primary-400">Linux</div>
-                  <div className="text-sm text-gray-500">But like windows</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-primary-400">
-                    Made Easy
-                  </div>
-                  <div className="text-sm text-gray-500">For You !!</div>
-                </div>
-              </motion.div>
-            </motion.div>
-
-            <motion.div
-              className="hero-visual flex justify-center lg:justify-end mb-20"
-              initial={{ x: 100, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ duration: 0.8, delay: 0.2, damping: 25 }}
-            >
-              <motion.div
-                className="relative"
-                animate={{
-                  rotate: [0, 2, -2, 0],
-                  y: [0, -15, 0],
-                }}
-                transition={{
-                  duration: 4,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-              >
-                <motion.div
-                  className="absolute inset-0 w-96 h-96 bg-primary-500/20 rounded-full blur-3xl"
-                  animate={{
-                    scale: [1, 1.2, 1],
-                    opacity: [0.3, 0.6, 0.3],
-                  }}
-                  transition={{
-                    duration: 3,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
-                />
-
-                <motion.div
-                  className="terminal relative z-10"
-                  style={{
-                    boxShadow:
-                      "0 30px 60px rgba(139, 92, 246, 0.4), 0 0 100px rgba(139, 92, 246, 0.1)",
-                  }}
-                >
-                  <div className="terminal-header bg-gradient-to-r from-dark-tertiary to-dark-secondary">
-                    <div className="terminal-buttons">
-                      <span className="btn-close shadow-lg shadow-red-500/50"></span>
-                      <span className="btn-minimize shadow-lg shadow-yellow-500/50"></span>
-                      <span className="btn-maximize shadow-lg shadow-green-500/50"></span>
-                    </div>
-                    <div className="terminal-title text-primary-400 font-mono">
-                      n0ctos@n1tro-installer
-                    </div>
-                  </div>
-                  <div className="terminal-body bg-dark-secondary/90 backdrop-blur">
-                    <motion.div
-                      className="terminal-line text-primary-400 overflow-hidden text-nowrap"
-                      initial={{ width: 0 }}
-                      animate={{ width: "100%" }}
-                      transition={{ delay: 1, duration: 2 }}
-                    >
-                      $ sudo install N0ctOS
-                    </motion.div>
-                    <motion.div
-                      className="terminal-line text-gray-400"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 3, duration: 0.5 }}
-                    >
-                      🚀 Initializing ARCH core...
-                    </motion.div>
-                    <motion.div
-                      className="terminal-line text-gray-400"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 4, duration: 0.5 }}
-                    >
-                      ⚡ Optimizing Your Workflow
-                    </motion.div>
-                    <motion.div
-                      className="terminal-line success text-green-400 font-bold"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 5, duration: 0.5 }}
-                    >
-                      ✓ N0ctOS 2026 installed successfully!
-                    </motion.div>
-                    <motion.div
-                      className="terminal-line text-primary-400 animate-pulse"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 6, duration: 0.5 }}
-                    >
-                      🌟 Ready to launch into future...
-                    </motion.div>
-                  </div>
-                </motion.div>
-              </motion.div>
-            </motion.div>
-          </div>
-        </section>
-      </main>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
     </div>
   );
 }
 
-export default Home;
