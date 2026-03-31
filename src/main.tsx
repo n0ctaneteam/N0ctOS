@@ -1,4 +1,4 @@
-const isPublic: boolean = true;
+const isPublic: boolean = false;
 // this variable decides if the wall is to be shown or not...
 // true: publishes the app to isPublic
 // false: replaces everything with wall(pageunderbuild)
