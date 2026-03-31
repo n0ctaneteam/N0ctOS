@@ -1,101 +1,64 @@
-import { useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useMotionValue, useSpring } from "motion/react";
+import { useEffect, useState } from "react";
 
-const CustomCursor = () => {
-  const cursorRef = useRef<HTMLDivElement>(null);
-  const trailRef = useRef<HTMLDivElement>(null);
+export default function CustomCursor() {
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+
+  const springConfig = { damping: 25, stiffness: 700 };
+  const cursorX = useSpring(mouseX, springConfig);
+  const cursorY = useSpring(mouseY, springConfig);
+
   const [isHovering, setIsHovering] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
-  const positionRef = useRef({ x: 0, y: 0 });
-  const rafRef = useRef<number>();
 
   useEffect(() => {
-    const updateCursor = () => {
-      if (cursorRef.current) {
-        cursorRef.current.style.transform = `translate(${positionRef.current.x - 10}px, ${positionRef.current.y - 10}px)`;
-      }
-      if (trailRef.current) {
-        trailRef.current.style.transform = `translate(${positionRef.current.x - 20}px, ${positionRef.current.y - 20}px)`;
-      }
+    console.log("CustomCursor mounted");
+    const moveMouse = (e: MouseEvent) => {
+      mouseX.set(e.clientX);
+      mouseY.set(e.clientY);
     };
 
-    const handleMouseMove = (e: MouseEvent) => {
-      positionRef.current = { x: e.clientX, y: e.clientY };
-      
-      if (!isVisible) setIsVisible(true);
-      
-      // Cancel pending RAF and schedule new one
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      rafRef.current = requestAnimationFrame(updateCursor);
-    };
-
-    // Check if element or any parent is clickable
-    const isClickable = (el: HTMLElement): boolean => {
-      return !!(
-        el.tagName === 'A' ||
-        el.tagName === 'BUTTON' ||
-        el.closest('a') ||
-        el.closest('button') ||
-        el.closest('.btn') ||
-        el.closest('[role="button"]') ||
-        el.closest('label') ||
-        el.onclick ||
-        el.getAttribute('role') === 'button'
-      );
-    };
-
-    const handleMouseOver = (e: MouseEvent) => {
-      if (isClickable(e.target as HTMLElement)) {
+    const handleHover = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('a, button, [role="button"]')) {
         setIsHovering(true);
-      }
-    };
-
-    const handleMouseOut = (e: MouseEvent) => {
-      if (isClickable(e.target as HTMLElement)) {
+      } else {
         setIsHovering(false);
       }
     };
 
-    document.addEventListener('mousemove', handleMouseMove, { passive: true });
-    document.addEventListener('mouseover', handleMouseOver, { passive: true });
-    document.addEventListener('mouseout', handleMouseOut, { passive: true });
+    window.addEventListener("mousemove", moveMouse);
+    window.addEventListener("mouseover", handleHover);
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseover', handleMouseOver);
-      document.removeEventListener('mouseout', handleMouseOut);
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      window.removeEventListener("mousemove", moveMouse);
+      window.removeEventListener("mouseover", handleHover);
     };
-  }, [isVisible]);
-
-  if (!isVisible) return null;
+  }, [mouseX, mouseY]);
 
   return (
     <>
-      {/* Main cursor - direct DOM manipulation for smooth tracking */}
       <motion.div
-        ref={cursorRef}
-        className="fixed top-0 left-0 w-5 h-5 bg-primary-500 rounded-full pointer-events-none z-[9999] mix-blend-difference"
-        initial={{ scale: 1 }}
-        animate={{ scale: isHovering ? 2 : 1 }}
-        transition={{ type: 'spring', stiffness: 500, damping: 28, mass: 0.5 }}
+        className="fixed top-0 left-0 w-6 h-6 bg-primary rounded-full pointer-events-none z-[9999] mix-blend-difference"
         style={{
-          boxShadow: '0 0 20px rgba(139, 92, 246, 0.5)',
-          willChange: 'transform',
+          x: cursorX,
+          y: cursorY,
+          translateX: "-50%",
+          translateY: "-50%",
+          scale: isHovering ? 2.5 : 1,
         }}
       />
-      
-      {/* Cursor trail */}
       <motion.div
-        ref={trailRef}
-        className="fixed top-0 left-0 w-10 h-10 border-2 border-primary-400 rounded-full pointer-events-none z-[9998] mix-blend-difference"
-        initial={{ scale: 1 }}
-        animate={{ scale: isHovering ? 1.5 : 1 }}
-        transition={{ type: 'spring', stiffness: 200, damping: 20, mass: 0.8 }}
-        style={{ willChange: 'transform' }}
+        className="fixed top-0 left-0 w-12 h-12 border border-primary/30 rounded-full pointer-events-none z-[9998]"
+        style={{
+          x: cursorX,
+          y: cursorY,
+          translateX: "-50%",
+          translateY: "-50%",
+          scale: isHovering ? 1.5 : 1,
+        }}
+        transition={{ type: "spring", damping: 30, stiffness: 200 }}
       />
     </>
   );
-};
-
-export default CustomCursor;
+}
