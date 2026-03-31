@@ -12,8 +12,6 @@ import Team from "./pages/Team";
 import NotFound from "./pages/not-found";
 import { PageUnderBuild } from "./pageunderbuild";
 
-import BigTextSection from "./components/BigTextSection";
-
 export function App() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     const saved = localStorage.getItem("theme");
@@ -36,19 +34,19 @@ export function App() {
       
       <main>
         <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/home" element={<Home />} />
-          <Route path="/features" element={<Features />} />
-          <Route path="/download" element={<Download />} />
-          <Route path="/docs" element={<Docs />} />
-          <Route path="/team" element={<Team />} />
-          <Route path="/under-construction" element={<PageUnderBuild />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <Route path="/" element={<Navigate to="/home" replace/>}/>
+        <Route path="/home" element={<Home />} />
+        <Route path="/features" element={<Features />} />
+        <Route path="/download" element={<Download />} />
+        <Route path="/docs" element={<Docs />} />
+        <Route path="/team" element={<Team />} />
+        
+        <Route path="*" element={<Navigate to="/notfound" replace/>} />
+        <Route path="/notfound" element={<NotFound/>}/>
+      </Routes>
       </main>
 
       <Footer />
-      <BigTextSection />
     </div>
   );
 }
