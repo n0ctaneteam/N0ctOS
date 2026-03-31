@@ -1,198 +1,69 @@
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion } from "motion/react";
+import { Zap, Shield, Layout, Terminal, MousePointer2, Cpu } from "lucide-react";
 
-const LOGO_URL =
-  "https://res.cloudinary.com/drysfsc1b/image/upload/v1771153631/N0ctOS_ritdbv.png";
-
-const features_list = [
-  {
-    icon: "⚡",
-    title: "Super Speed",
-    description:
-      "Lightning-fast boot times and instant application launches with well-optimizations",
-    color: "from-yellow-400 to-orange-500",
-  },
-  {
-    icon: "🛡️",
-    title: "Fortress Security*",
-    description: "No Tracking & user-data collection. Plus Linux Security",
-    color: "from-purple-400 to-purple-500",
-  },
-  {
-    icon: "🌐",
-    title: "Future Ready",
-    description: "Built for tomorrow with cutting-edge stable technology stack",
-    color: "from-green-400 to-emerald-500",
-  },
-  {
-    icon: "🔧",
-    title: "Developer Tools",
-    description:
-      "Comprehensive development environment with modern tools and libraries",
-    color: "from-indigo-400 to-purple-500",
-  },
-  {
-    icon: "📱",
-    title: "Own Apps & Utils",
-    description: "We have made some own apps, to simplify linux... reduce terminal headache",
-    color:""
-  },
-  {
-    icon: "📖",
-    title: "Docs for Everything",
-    description: "We have curated docs for N0ctOS, apps, Arch, Hyprland, FAQs and much more",
-    color:""
-  },
-  {
-    icon: "👥",
-    title: "Community support",
-    description: "Discord Server, Reddit, Github Issues... You will get help from everywhere",
-    color:""
-  },
-  {
-    icon: "💪",
-    title: "Battle-tested Stable",
-    description: "We do 3 step Stability check, before releasing a major Version",
-    color:""
-  },
-  {
-    icon: "🧰",
-    title: "Anyone can Fix us",
-    description: "Found a bug ? Just report us, or fix yourself and merge your fix",
-    color:""
-  },
-  {
-    icon: "👶",
-    title: "Easy For Beginners",
-    description: "Easy install, Easy daily drive, Easy fixes... Arch made simple",
-    color:""
-  },
-  {
-    icon: "💻",
-    title: "Customized Desktop",
-    description: "We have done all customizations, that you need",
-    color:""
-  },
-  {
-    icon: "🚫",
-    title: "No AI, No BLOAT",
-    description: "We only give Essentials, You install what you need",
-    color:""
-  },
-];
-
-function Features() {
-  const { scrollY } = useScroll();
-  const featuresY = useTransform(scrollY, [0, 1000], [0, -100]);
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-        delayChildren: 0.2,
-      },
+export default function Features() {
+  const features = [
+    {
+      title: "Lightning Fast",
+      desc: "Optimized kernel and minimal background services for peak performance.",
+      icon: <Zap className="w-8 h-8 text-primary" />
     },
-  };
-
-  const itemVariants = {
-    hidden: { y: 20, opacity: 0 },
-    visible: {
-      y: 0,
-      opacity: 1,
-      transition: {
-        type: "spring",
-        stiffness: 100,
-        damping: 20,
-      },
+    {
+      title: "Hardened Security",
+      desc: "Pre-configured firewall and security patches to keep your data safe.",
+      icon: <Shield className="w-8 h-8 text-secondary" />
     },
-  };
+    {
+      title: "Custom DE",
+      desc: "A beautifully crafted desktop environment designed for productivity.",
+      icon: <Layout className="w-8 h-8 text-accent" />
+    },
+    {
+      title: "Developer Friendly",
+      desc: "All your favorite tools pre-installed and ready to go.",
+      icon: <Terminal className="w-8 h-8 text-primary" />
+    },
+    {
+      title: "Smooth Animations",
+      desc: "Fluid UI interactions that make using your OS a delight.",
+      icon: <MousePointer2 className="w-8 h-8 text-secondary" />
+    },
+    {
+      title: "Arch Based",
+      desc: "The power and flexibility of Arch Linux with a user-friendly touch.",
+      icon: <Cpu className="w-8 h-8 text-accent" />
+    }
+  ];
 
   return (
-    <div className=" text-white font-tektur flex flex-col justify-center content-center items-center">
-      <main className="flex-grow">
-        <section className="py-24 relative">
+    <div className="pt-32 pb-20 px-6 max-w-7xl mx-auto">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="text-center mb-20"
+      >
+        <h1 className="text-5xl md:text-7xl font-bold tracking-tighter mb-6">OS Features</h1>
+        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+          N0ctOS isn't just another distribution. It's a carefully curated experience.
+        </p>
+      </motion.div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {features.map((f, idx) => (
           <motion.div
-            className="absolute inset-0 bg-gradient-radial opacity-30"
-            style={{ y: featuresY }}
-          />
-
-          <div className="container relative z-10">
-            <motion.h2
-              className="section-title text-5xl md:text-6xl"
-              initial={{ y: 30, opacity: 0 }}
-              whileInView={{ y: 0, opacity: 1 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-            >
-              <img
-                src={LOGO_URL}
-                alt="N0ctOS Logo"
-                className="w-[clamp(100px,100%,400px)] object-contain mx-auto mb-6 drop-shadow-[0_0_20px_rgba(139,92,246,0.5)]"
-              />
-              Why Choose{" "}
-              <span className="bg-gradient-to-r from-accent to-primary-500 bg-clip-text text-transparent">
-                N0ctOS
-              </span>
-              ?
-            </motion.h2>
-
-            <motion.div
-              className="grid md:grid-cols-2 lg:grid-cols-4 gap-8"
-              variants={containerVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-            >
-              {features_list.map((feature) => (
-                <motion.div
-                  key={feature.title}
-                  className="feature-card group relative overflow-hidden"
-                  variants={itemVariants}
-                  whileHover={{
-                    scale: 1.05,
-                    rotateY: 5,
-                    borderColor: "rgba(128, 0, 128, 0.5)",
-                  }}
-                >
-                  <motion.div
-                    className={`absolute inset-0 bg-gradient-to-br ${feature.color} opacity-0 group-hover:opacity-10 transition-opacity duration-300`}
-                  />
-
-                  <motion.div
-                    className="text-6xl mb-6 relative z-10"
-                    whileHover={{ scale: 1.2, rotate: 10 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                  >
-                    {feature.icon}
-                  </motion.div>
-
-                  <h3 className="text-2xl font-bold mb-4 text-white relative z-10 group-hover:text-primary-400 transition-colors">
-                    {feature.title}
-                  </h3>
-
-                  <p className="text-gray-400 leading-relaxed relative z-10 text-sm">
-                    {feature.description}
-                  </p>
-
-                  <motion.div
-                    className="absolute bottom-0 left-0 w-0 h-1 bg-gradient-to-r opacity-0 group-hover:opacity-100"
-                    style={{
-                      backgroundImage: `linear-gradient(to right, ${feature.color.split(" ")[1]}, ${feature.color.split(" ")[3]})`,
-                    }}
-                    initial={{ width: 0 }}
-                    whileHover={{ width: "100%" }}
-                    transition={{ duration: 0.3 }}
-                  />
-                </motion.div>
-              ))}
-            </motion.div>
-          </div>
-        </section>
-      </main>
-      <span className="self-center text-slate-700 text-xs">*security breach is responsibility of user. Although we provide open source and safe softwares, user may install breach-er softwares</span>
+            key={f.title}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: idx * 0.1 }}
+            className="p-8 bg-muted/30 border border-white/5 rounded-3xl hover:bg-muted/50 transition-colors"
+          >
+            <div className="mb-6">{f.icon}</div>
+            <h3 className="text-2xl font-bold mb-3">{f.title}</h3>
+            <p className="text-muted-foreground leading-relaxed">{f.desc}</p>
+          </motion.div>
+        ))}
+      </div>
     </div>
   );
 }
 
-export default Features;
