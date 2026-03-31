@@ -3,6 +3,10 @@ import { Link } from "react-router-dom";
 import { Home, Ghost } from "lucide-react";
 
 export default function NotFound() {
+  const redirectToHome = () => {
+    navigate("/home");
+  };
+  
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
       <motion.div
@@ -16,13 +20,13 @@ export default function NotFound() {
       <p className="text-2xl text-muted-foreground mb-12 max-w-md">
         Oops! It seems you've wandered into the dark. This page doesn't exist.
       </p>
-      <Link
-        to="/"
+      <Button
+        onClick={redirectToHome}
         className="bg-primary text-background px-8 py-3 rounded-full font-bold flex items-center gap-2 hover:scale-105 transition-transform"
       >
         <Home className="w-5 h-5" />
         Back to Home
-      </Link>
+      </Button>
     </div>
   );
 }
