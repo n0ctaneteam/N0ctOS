@@ -2,7 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { Cpu, Menu, X, Sun, Moon } from "lucide-react";
 import { useState } from "react";
-import { cn } from "@/src/lib/utils";
+// import { cn } from "@/src/lib/utils";
 
 const navLinks = [
   { name: "Home", path: "/" },
@@ -41,10 +41,9 @@ export default function Navbar({ theme, toggleTheme }: NavbarProps) {
             <Link
               key={link.path}
               to={link.path}
-              className={cn(
-                "text-sm font-medium transition-colors hover:text-primary relative py-2",
-                location.pathname === link.path ? "text-primary" : "text-muted-foreground"
-              )}
+              className={
+                `text-sm font-medium transition-colors hover:text-primary relative py-2 ${location.pathname === link.path ? "text-primary" : "text-muted-foreground"}`
+              }
             >
               {link.name}
               {location.pathname === link.path && (
@@ -99,10 +98,9 @@ export default function Navbar({ theme, toggleTheme }: NavbarProps) {
               key={link.path}
               to={link.path}
               onClick={() => setIsOpen(false)}
-              className={cn(
-                "block text-lg font-medium",
-                location.pathname === link.path ? "text-primary" : "text-muted-foreground"
-              )}
+              className={
+                `block text-lg font-medium ${location.pathname === link.path ? "text-primary" : "text-muted-foreground"}`
+              }
             >
               {link.name}
             </Link>
