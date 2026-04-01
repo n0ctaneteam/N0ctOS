@@ -21,7 +21,7 @@ import ScrollToTop from "./components/ScrollToTop";
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter basename="/N0ctOS">
-      <><ScrollToTop/>{isPublic ? <App /> : <Pageunderbuild />}<CustomCursor/></> {/*decides what to render*/}
+      <><ScrollToTop/>{isPublic ? <App /> : <Pageunderbuild />}</> {/*decides what to render*/}
     </BrowserRouter>
   </StrictMode>,
 );
