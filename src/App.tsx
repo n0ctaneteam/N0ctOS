@@ -14,7 +14,7 @@ import { PageUnderBuild } from "./pageunderbuild";
 
 export function App() {
   return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-primary/30 selection:text-primary transition-colors duration-300">
+    <div className="w-dvw min-h-dvh flex flex-col content-between justify-between gap-0 overflow-hidden bg-background text-foreground selection:bg-primary/30 selection:text-primary transition-colors duration-300">
       <Navbar />
       <div className="px-1 py-5 flex-grow mt-[clamp(50px,10dvh,100px)] ">
       <Routes>
