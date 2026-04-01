@@ -1,4 +1,4 @@
-meow meow ghop ghop ghop
+meow ghop ghop ghop
 
 # React + TypeScript + Vite
 
