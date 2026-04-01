@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 // import { cn } from "@/src/lib/utils";
 
 const navLinks = [
-  { name: "Home", path: "/" },
+  { name: "Home", path: "/home" },
   { name: "Features", path: "/features" },
   { name: "Download", path: "/download" },
   { name: "Docs", path: "/docs" },
