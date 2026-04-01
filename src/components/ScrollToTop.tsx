@@ -1,8 +1,22 @@
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronUp } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 export default function ScrollToTop() {
+
+  //auto scroll to top on rout chabge
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "smooth", // change to "smooth" if you want
+    });
+  }, [pathname]);
+
+  // scroll to top button
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {

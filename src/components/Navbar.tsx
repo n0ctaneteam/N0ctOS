@@ -1,8 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { Cpu, Menu, X, Sun, Moon } from "lucide-react";
-import { useState } from "react";
-import { cn } from "@/src/lib/utils";
+import { useState, useEffect } from "react";
+// import { cn } from "@/src/lib/utils";
 
 const navLinks = [
   { name: "Home", path: "/" },
@@ -21,6 +21,12 @@ export default function Navbar({ theme, toggleTheme }: NavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
 
+  useEffect(() => {
+    // This code runs every time the location changes (i.e., a route change)
+    console.log('Route changed to:', location.pathname);
+    setIsOpen(false); // Set the variable to false
+  }, [location.pathname]);
+  
   return (
     <nav className="fixed top-0 left-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-foreground/5">
       <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
@@ -35,10 +41,9 @@ export default function Navbar({ theme, toggleTheme }: NavbarProps) {
             <Link
               key={link.path}
               to={link.path}
-              className={cn(
-                "text-sm font-medium transition-colors hover:text-primary relative py-2",
-                location.pathname === link.path ? "text-primary" : "text-muted-foreground"
-              )}
+              className={
+                `text-sm font-medium transition-colors hover:text-primary relative py-2 ${location.pathname === link.path ? "text-primary" : "text-muted-foreground"}`
+              }
             >
               {link.name}
               {location.pathname === link.path && (
@@ -93,10 +98,9 @@ export default function Navbar({ theme, toggleTheme }: NavbarProps) {
               key={link.path}
               to={link.path}
               onClick={() => setIsOpen(false)}
-              className={cn(
-                "block text-lg font-medium",
-                location.pathname === link.path ? "text-primary" : "text-muted-foreground"
-              )}
+              className={
+                `block text-lg font-medium ${location.pathname === link.path ? "text-primary" : "text-muted-foreground"}`
+              }
             >
               {link.name}
             </Link>

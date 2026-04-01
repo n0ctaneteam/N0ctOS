@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
@@ -11,8 +11,6 @@ import Docs from "./pages/Docs";
 import Team from "./pages/Team";
 import NotFound from "./pages/not-found";
 import { PageUnderBuild } from "./pageunderbuild";
-
-import BigTextSection from "./components/BigTextSection";
 
 export function App() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -30,24 +28,24 @@ export function App() {
     setTheme(prev => (prev === "light" ? "dark" : "light"));
   };
 
-  return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-primary/30 selection:text-primary transition-colors duration-300">
-      <Navbar theme={theme} toggleTheme={toggleTheme} />
-      
-      <main>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/features" element={<Features />} />
-          <Route path="/download" element={<Download />} />
-          <Route path="/docs" element={<Docs />} />
-          <Route path="/team" element={<Team />} />
-          <Route path="/under-construction" element={<PageUnderBuild />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </main>
 
-      <Footer />
-      <BigTextSection />
+  return (
+    <div className="w-dvw min-h-dvh flex flex-col content-between justify-between gap-0 overflow-hidden bg-background text-foreground selection:bg-primary/30 selection:text-primary transition-colors duration-300">
+      <Navbar theme={theme} toggleTheme={toggleTheme} />
+      <div className="px-1 py-5 flex-grow mt-[clamp(50px,10dvh,100px)] ">
+      <Routes>
+        <Route path="/" element={<Navigate to="/home" replace/>}/>
+        <Route path="/home" element={<Home />} />
+        <Route path="/features" element={<Features />} />
+        <Route path="/download" element={<Download />} />
+        <Route path="/docs" element={<Docs />} />
+        <Route path="/team" element={<Team />} />
+        
+        <Route path="*" element={<Navigate to="/notfound" replace/>} />
+        <Route path="/notfound" element={<NotFound/>}/>
+      </Routes>
+      </div>
+      <Footer/>
     </div>
   );
 }
