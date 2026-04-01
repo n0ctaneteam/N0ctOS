@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { Cpu, Menu, X, Sun, Moon } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 // import { cn } from "@/src/lib/utils";
 
 const navLinks = [

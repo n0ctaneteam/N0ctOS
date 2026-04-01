@@ -13,9 +13,25 @@ import NotFound from "./pages/not-found";
 import { PageUnderBuild } from "./pageunderbuild";
 
 export function App() {
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved) return saved as "light" | "dark";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => (prev === "light" ? "dark" : "light"));
+  };
+
+
   return (
     <div className="w-dvw min-h-dvh flex flex-col content-between justify-between gap-0 overflow-hidden bg-background text-foreground selection:bg-primary/30 selection:text-primary transition-colors duration-300">
-      <Navbar />
+      <Navbar theme={theme} toggleTheme={toggleTheme} />
       <div className="px-1 py-5 flex-grow mt-[clamp(50px,10dvh,100px)] ">
       <Routes>
         <Route path="/" element={<Navigate to="/home" replace/>}/>

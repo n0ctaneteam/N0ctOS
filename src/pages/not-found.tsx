@@ -1,8 +1,9 @@
 import { motion } from "motion/react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Home, Ghost } from "lucide-react";
 
 export default function NotFound() {
+  const navigate = useNavigate();
   const redirectToHome = () => {
     navigate("/home");
   };
