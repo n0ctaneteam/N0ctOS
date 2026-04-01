@@ -65,7 +65,7 @@ export default function Navbar({ theme, toggleTheme }: NavbarProps) {
 
           <Link
             to="/download"
-            className="bg-primary text-white dark:text-background px-5 py-2 rounded-full text-sm font-bold hover:scale-105 transition-transform"
+            className="bg-primary text-background dark:text-background px-5 py-2 rounded-full text-sm font-bold hover:scale-105 transition-transform"
           >
             Get N0ctOS
           </Link>
@@ -108,7 +108,7 @@ export default function Navbar({ theme, toggleTheme }: NavbarProps) {
           <Link
             to="/download"
             onClick={() => setIsOpen(false)}
-            className="block bg-primary text-white dark:text-background px-5 py-3 rounded-xl text-center font-bold"
+            className="block bg-primary text-background dark:text-background px-5 py-3 rounded-xl text-center font-bold"
           >
             Get N0ctOS
           </Link>
