@@ -1,19 +1,23 @@
 import { Link } from "react-router-dom";
 import { Github, Cpu } from "lucide-react";
 
+const LOGO_URL = "./logo-transparent.png";
 export default function Footer() {
   return (
     <footer className="bg-muted/50 border-t border-white/5 py-12 px-6">
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 font-bold text-xl tracking-tighter">
-            <Cpu className="w-6 h-6 text-primary" />
-            <span>N0ctOS</span>
+        <div className="flex flex-col items-start">
+            <Link to="/" className="mb-4">
+              <img 
+                src={LOGO_URL} 
+                alt="N0ctOS" 
+                className="object-contain"
+              />
+            </Link>
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              The Future of Linux. Built for developers, designed for humans.
+            </p>
           </div>
-          <p className="text-muted-foreground text-sm leading-relaxed">
-            A performance-driven, Arch-based Linux distribution designed for the modern user. Sleek, fast, and nocturnal.
-          </p>
-        </div>
         
         <div>
           <h4 className="font-semibold mb-4">Project</h4>
