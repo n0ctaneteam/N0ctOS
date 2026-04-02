@@ -7,14 +7,14 @@ export default function Footer() {
     <footer className="bg-muted/50 border-t border-white/5 py-12 px-6">
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
         <div className="flex flex-col items-start">
-            <Link to="/" className="mb-4">
+            <Link to="/" className="mb-4 max-w-[35%]">
               <img 
                 src={LOGO_URL} 
                 alt="N0ctOS" 
                 className="object-contain"
               />
             </Link>
-            <p className="text-muted-foreground text-sm leading-relaxed">
+            <p className="text-muted-foreground text-xs leading-relaxed">
               The Future of Linux. Built for developers, designed for humans.
             </p>
           </div>
