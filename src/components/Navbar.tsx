@@ -31,10 +31,26 @@ export default function Navbar({ theme, toggleTheme }: NavbarProps) {
   return (
     <nav className="fixed top-0 left-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-foreground/5">
       <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 font-bold text-2xl tracking-tighter group">
-          <Cpu className="w-8 h-8 text-primary group-hover:rotate-12 transition-transform" />
-          <span className="bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/50">N0ctOS</span>
-        </Link>
+        {/* Logo */}
+          <motion.div
+            transition={{
+              type: "spring",
+              stiffness: 400,
+              damping: 25,
+            }}
+            className="flex flex-grow-0 max-h-full"
+          >
+            <Link to="/home" className="flex items-center flex-grow-0 w-fit gap-3 max-h-full">
+              <img 
+                src={LOGO_URL} 
+                alt="N0ctOS" 
+                className="object-contain max-h-full max-w-36"
+              />
+              <span className="text-xs text-primary-400 font-mono object-contain">
+                v2026.1
+              </span>
+            </Link>
+          </motion.div>
 
         {/* Desktop Nav */}
         <div className="hidden md:flex items-center gap-8">
