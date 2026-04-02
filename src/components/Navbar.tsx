@@ -12,6 +12,7 @@ const navLinks = [
   { name: "Team", path: "/team" },
 ];
 
+const LOGO_URL = "./logo-transparent.png";
 interface NavbarProps {
   theme: "light" | "dark";
   toggleTheme: () => void;
