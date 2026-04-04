@@ -4,7 +4,7 @@ import { Cpu, ChevronRight, Github, Terminal } from "lucide-react";
 
 export default function Home() {
   return (
-    <div className="relative overflow-hidden">
+    <div className="relative overflow-hidden mt-[-clamp(50px,10dvh,100px)]">
       {/* Hero Section */}
       <section className="w-dvw px-6 h-dvh max-h-dvh grid place-items-center">
         <div className="max-w-7xl mx-auto text-center relative z-10">
