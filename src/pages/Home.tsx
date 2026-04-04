@@ -4,9 +4,9 @@ import { Cpu, ChevronRight, Github, Terminal } from "lucide-react";
 
 export default function Home() {
   return (
-    <div className="relative overflow-hidden mt-[-(clamp(50px,10dvh,100px))]">
+    <div className="relative overflow-hidden">
       {/* Hero Section */}
-      <section className="w-dvw px-6 h-dvh max-h-dvh grid place-items-center">
+      <section className="w-dvw px-6 h-[90vh] max-h-dvh grid place-items-center">
         <div className="max-w-7xl mx-auto text-center relative z-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
