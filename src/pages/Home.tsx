@@ -6,7 +6,7 @@ export default function Home() {
   return (
     <div className="relative overflow-hidden">
       {/* Hero Section */}
-      <section className="pt-40 pb-20 px-6">
+      <section className="w-dvw px-6 h-dvh max-h-dvh grid place-items-center">
         <div className="max-w-7xl mx-auto text-center relative z-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -55,7 +55,7 @@ export default function Home() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             whileInView={{ opacity: 1, scale: 1 }}
-            className="bg-[#0c0c0c] rounded-3xl border border-white/10 shadow-2xl overflow-hidden"
+            className="bg-muted rounded-3xl border border-white/10 shadow-2xl overflow-hidden"
           >
             <div className="h-10 bg-white/5 flex items-center px-4 gap-2">
               <div className="w-3 h-3 rounded-full bg-red-500/50" />

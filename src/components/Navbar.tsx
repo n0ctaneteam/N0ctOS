@@ -29,7 +29,7 @@ export default function Navbar({ theme, toggleTheme }: NavbarProps) {
   }, [location.pathname]);
   
   return (
-    <nav className="fixed top-0 left-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-foreground/5">
+    <nav className="fixed top-0 left-0 w-full z-50 bg-background/80 backdrop-blur-smq border-b border-foreground/5">
       <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
         {/* Logo */}
           <motion.div
