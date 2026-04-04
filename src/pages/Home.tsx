@@ -4,7 +4,7 @@ import { Cpu, ChevronRight, Github, Terminal } from "lucide-react";
 
 export default function Home() {
   return (
-    <div className="relative overflow-hidden mt-[-clamp(50px,10dvh,100px)]">
+    <div className="relative overflow-hidden mt-[-(clamp(50px,10dvh,100px))]">
       {/* Hero Section */}
       <section className="w-dvw px-6 h-dvh max-h-dvh grid place-items-center">
         <div className="max-w-7xl mx-auto text-center relative z-10">
@@ -24,7 +24,7 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
               <Link
                 to="/download"
-                className="group bg-white text-black px-10 py-4 rounded-2xl font-bold text-lg flex items-center gap-2 hover:bg-primary transition-all hover:scale-105"
+                className="group bg-primary text-black px-10 py-4 rounded-2xl font-bold text-lg flex items-center gap-2 hover:bg-primary transition-all hover:scale-105"
               >
                 Join the Waitlist
                 <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
