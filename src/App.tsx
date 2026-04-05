@@ -32,7 +32,7 @@ export function App() {
   return (
     <div className="w-dvw min-h-dvh flex flex-col content-between justify-between gap-0 overflow-hidden bg-background text-foreground selection:bg-primary/30 selection:text-primary transition-colors duration-300">
       <Navbar theme={theme} toggleTheme={toggleTheme} />
-      <div className="px-1 py-5 flex-grow mt-[clamp(50px,10dvh,100px)] ">
+      <main className="px-1 py-5 flex-grow">
       <Routes>
         <Route path="/" element={<Navigate to="/home" replace/>}/>
         <Route path="/home" element={<Home />} />
@@ -44,7 +44,7 @@ export function App() {
         <Route path="*" element={<Navigate to="/notfound" replace/>} />
         <Route path="/notfound" element={<NotFound/>}/>
       </Routes>
-      </div>
+      </main>
       <Footer/>
     </div>
   );

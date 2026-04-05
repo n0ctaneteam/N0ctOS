@@ -24,7 +24,7 @@ export default function Team() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-center mb-20"
+        className="flex items-center justify-center flex-col h-[70dvh] mb-[10px]"
       >
         <h1 className="text-5xl md:text-7xl font-bold tracking-tighter mb-6">The Duo</h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">

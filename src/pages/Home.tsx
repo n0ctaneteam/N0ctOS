@@ -6,7 +6,7 @@ export default function Home() {
   return (
     <div className="relative overflow-hidden">
       {/* Hero Section */}
-      <section className="w-dvw px-6 h-[90vh] max-h-dvh grid place-items-center">
+      <section className="w-dvw px-6 pt-20 h-[100dvh] max-h-dvh grid place-items-center">
         <div className="max-w-7xl mx-auto text-center relative z-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -50,7 +50,7 @@ export default function Home() {
       {/* Stats Section Removed - Project in Early Stage */}
 
       {/* Terminal Preview */}
-      <section className="py-32 px-6">
+      <section className="py-6 px-6">
         <div className="max-w-5xl mx-auto">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
