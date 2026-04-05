@@ -20,11 +20,11 @@ export default function Team() {
   ];
 
   return (
-    <div className="pt-32 pb-20 px-6 max-w-7xl mx-auto">
+    <div className="px-6 max-w-7xl mx-auto">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-center flex-col h-[70dvh] mb-[10px]"
+        className="flex items-center justify-center flex-col h-[60vh] mb-[10px]"
       >
         <h1 className="text-5xl md:text-7xl font-bold tracking-tighter mb-6">The Duo</h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">

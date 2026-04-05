@@ -6,7 +6,7 @@ export default function Home() {
   return (
     <div className="relative overflow-hidden">
       {/* Hero Section */}
-      <section className="w-dvw px-6 pt-20 h-[100dvh] max-h-dvh grid place-items-center">
+      <section className="w-dvw px-6 pt-20 h-[100vh] max-h-vh grid place-items-center">
         <div className="max-w-7xl mx-auto text-center relative z-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}

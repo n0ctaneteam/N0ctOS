@@ -25,7 +25,7 @@ export default function Docs() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col items-center justify-center h-[60dvh] mb-[10px] transition-all duration-600 ease-in-out"
+        className="flex flex-col items-center justify-center h-[60vh] mb-[10px]"
       >
         <h1 className="text-5xl md:text-7xl font-bold tracking-tighter mb-6">Documentation</h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
