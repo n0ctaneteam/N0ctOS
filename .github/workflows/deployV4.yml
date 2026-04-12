@@ -47,7 +47,7 @@ jobs:
               with:
                   ref: 'n0ctos-website'
             - name: Download Artifacts
-              uses: actions/download-artifact@v4
+              uses: actions/download-artifact@v7
               with:
                   name: "github-pages-deployed"
                   path: ./
