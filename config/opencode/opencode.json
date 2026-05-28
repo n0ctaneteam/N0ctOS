@@ -1,0 +1,13 @@
+{
+  "mcp": {
+    "pencil": {
+      "command": [
+        "/tmp/.mount_PencilSfPugC/resources/app.asar.unpacked/out/mcp-server-linux-x64",
+        "--app",
+        "desktop"
+      ],
+      "enabled": true,
+      "type": "local"
+    }
+  }
+}

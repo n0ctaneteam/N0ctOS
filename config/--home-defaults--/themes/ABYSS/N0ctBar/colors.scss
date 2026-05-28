@@ -1,0 +1,30 @@
+/* import colors from any color generator, i use hellwal */
+/* this file should be in ~/.config/N0ctBar/colors.css */
+@use 'sass:color';
+
+// fallback colors
+$primary: #004FAF;
+$secondary: #FF8C00;   
+
+// override with generated colors
+@import "../hellwal/colors.scss";
+$primary: $color9;
+$secondary: $color6;
+
+/* ACCENT COLORS */
+$accent: color.scale($primary,$lightness:-53%);
+$accent_mid: color.scale($primary,$lightness:-30%);
+$accent_dark: color.scale($primary,$lightness:-70%);
+$accent_glow: color.scale($primary,$lightness:45%);
+
+/* CONTRASTS (SECONDARY) */
+$contrast: color.scale($secondary,$lightness:-40%);
+$contrast_mid: color.scale($secondary,$lightness:-55%);
+$contrast_dark: color.scale($secondary,$lightness:-63%);
+$contrast_glow: color.scale($secondary,$lightness:45%);
+
+/* BACKGROUNDS */ 
+$accent_bg: color.scale($accent,$lightness:-65%);
+$accent_bg_dark: color.scale($accent,$lightness:-80%);
+$contrast_bg: color.scale($contrast,$lightness:-75%);
+$contrast_bg_dark: color.scale($contrast,$lightness:-90%);

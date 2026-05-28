@@ -1,0 +1,43 @@
+{
+  "default": {
+    "activateMenu": "",
+    "agentLatch": "",
+    "agentPermApprove": "",
+    "agentPermDeny": "",
+    "agentPermDismiss": "",
+    "agentPermGoto": "",
+    "agentReviewGoto": "g",
+    "agentReviewNext": "down",
+    "agentReviewPrev": "up",
+    "agents": "",
+    "bufferZoom": "",
+    "conversations": "",
+    "favoriteProfile": "",
+    "mainMenu": "ctrl+g",
+    "mobile": "",
+    "newPaneTab": "",
+    "nextPaneTab": "ctrl+right",
+    "nextSession": "",
+    "nextWindow": "ctrl+shift+right",
+    "notifications": "",
+    "options": "",
+    "prevPaneTab": "ctrl+left",
+    "prevSession": "",
+    "prevWindow": "ctrl+shift+left",
+    "profiles": "",
+    "quickTerminal": "",
+    "redraw": "",
+    "review": "",
+    "screenshot": "",
+    "sessions": "",
+    "sidebar": "",
+    "sidebarFocus": "",
+    "toolbar": "",
+    "toolbarFocus": "",
+    "zoomAgentsView": "",
+    "zoomServerView": ""
+  },
+  "overrides": {
+    "kitty": {}
+  }
+}

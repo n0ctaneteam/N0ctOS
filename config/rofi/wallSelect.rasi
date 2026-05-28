@@ -1,0 +1,112 @@
+configuration {
+    modi:                        "drun";
+    show-icons:                  true;
+    drun-display-format:         "{name}";
+    font:                        "JetBrainsMono NF Bold 12";
+    
+    hover-select:				 true;
+    click-to-exit: 		            true;
+	//me-select-entry:			 "";
+	//me-accept-entry:			 "MousePrimary";
+}
+
+//----- Global Properties -----//
+
+@theme "./matugen.rasi"
+
+
+//----- Main Window -----//
+
+window {
+    enabled:                     true;
+    fullscreen:                  false;
+    width:                       90%;
+    transparency:                "real";
+    cursor:                      "default";
+    spacing:                     0px;
+    padding:                     0px;
+    border:                      2px;
+    border-radius:               23px;
+    border-color:                @primary-fixed;
+    background-color:            transparent;
+}
+
+//----- Main Box -----//
+
+mainbox {
+    enabled:                     true;
+    children:                    [ "listview" ];
+    background-color:            transparent;
+    background-color:            @on-secondary-fixed;
+    opacity: 0.1;
+}
+
+
+//----- Listview -----//
+
+
+listview {
+    enabled:                     true;
+    columns:                     7;
+    lines:                       1;
+    spacing:                     20px;
+    padding:                     20px;
+    cycle:                       true;
+    dynamic:                     false;
+    scrollbar:                   true;
+    layout:                      vertical;
+    reverse:                     false;
+    fixed-height:                true;
+    fixed-columns:               true;
+    cursor:                      "default";
+    background-color:            transparent;
+    text-color:                  @main-fg;
+}
+
+//----- Elements -----//
+
+element {
+    enabled:                     true;
+    orientation:                 vertical;
+    spacing:                     0px;
+    padding:                     0px;
+    border-radius:               20px;
+    cursor:                      pointer;
+    background-color:            transparent;
+    text-color:                  @secondary-fixed;
+}
+
+
+element selected.normal {
+    background-color:            @on-primary-fixed-variant;
+    text-color:                  @on-surface;
+    font:                        "JetBrainsMono NF Bold 16";
+}
+
+element-icon {
+    size:                        42%;
+    cursor:                      inherit;
+    border-radius:               0px;
+    background-color:            transparent;
+    text-color:                  inherit;
+    squared: true;
+}
+
+element-text {
+    vertical-align:              0.5;
+    horizontal-align:            0.5;
+    padding:                     10px;
+    cursor:                      inherit;
+    background-color:            transparent;
+    text-color:                  inherit;
+}
+
+element-text selected.normal{
+    vertical-align:              0.5;
+    horizontal-align:            0.5;
+    padding:                     10px;
+    cursor:                      inherit;
+    background-color:            transparent;
+    text-color:                  inherit;
+    font:                        "JetBrainsMono NF Bold 16";
+}
