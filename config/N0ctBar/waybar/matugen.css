@@ -1,0 +1,11 @@
+@define-color modules_bg
+@define-color modules_border
+@define-color modules_glow
+@define-color end_modules_border
+@define-color end_modules_glow
+@define-color end_modules_bg
+@define-color secondary_modules_border
+@define-color secondary_modules_glow
+@define-color secondary_modules_bg
+@define-color secondary_fg
+@define-color radio_active_fg

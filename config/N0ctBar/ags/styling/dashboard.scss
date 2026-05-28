@@ -1,0 +1,23 @@
+@import "../../colors.scss";
+window.Dashboard{
+  background:
+  // linear-gradient(to bottom right, $contrast_bg 10px,  $contrast_bg_dark),;
+  linear-gradient(to bottom right, $accent_bg 10px,  $accent_bg_dark),;
+  border-radius: 20px;
+  border: 2px solid $accent_glow;
+  padding:10px;
+
+  button{
+    background: $contrast_dark;
+    border-bottom: 2px solid $contrast_glow;
+
+    &.current{
+      border-left: 2px solid $accent_glow;
+      border-right: 2px solid $accent_glow;
+    }
+    &:hover:not(.current){
+      background: $contrast_mid; 
+      box-sizing: border-box;
+    } 
+  }
+}

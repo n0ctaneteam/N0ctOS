@@ -1,0 +1,8 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Magniquick/waybar-config-schema/main/schema.json",
+
+  "custom/ags": {
+    "format": "Reload AGS",
+    "on-click": "ags quit && runapp ags run -d ~/.config/N0ctBar/ags &",
+  }
+}

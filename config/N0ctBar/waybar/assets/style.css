@@ -1,0 +1,254 @@
+/* //colors// */
+
+/* FALLBACK COLORS */
+@define-color primary #6320EE;
+@define-color secondary #00eeff;
+@define-color special white;
+
+@import url("./theme.css"); /* ACTUAL COLORS */
+
+/* ACCENT COLORS */
+@define-color accent mix(@primary,black,0.47);
+@define-color accent_light mix(white,@primary,0.7);
+@define-color accent_dark mix(black,@primary,0.20);
+@define-color accent_glow mix(white,@primary,0.45);
+
+/* CONTRASTS (SECONDARY) */
+@define-color contrast mix(@secondary,black,0.3);
+@define-color contrast_mid mix(@secondary,black,0.45);
+@define-color contrast_dark mix(black,@secondary,0.37);
+@define-color contrast_glow mix(white,@secondary,0.45);
+
+/* BACKGROUNDS */
+@define-color accent_bg mix(black,@accent,0.45);
+@define-color accent_bg_dark shade(mix(black,@accent,0.3),0.6);
+@define-color bg_color_light shade(grey,0.3);
+@define-color bg_color_dark shade(grey,0.1);
+
+* {
+  font-family: "Hurmit Nerd Font Propo";
+  font-size: 12px;
+  font-weight: 700;
+  /* background-color: @accent_glow; */
+  transition-timing-function: steps(1);
+  transition: all 0.3s;
+
+  padding: 0px;
+  margin: 0px;
+
+  /* border: .25px solid white; */
+}
+
+
+/*##################################################################*/
+/*########################   LEFT MODULES   ########################*/
+/*##################################################################*/
+
+/*===========================*/
+/*===  WORKSPACE STYLING  ===*/
+/*===========================*/
+#workspaces {
+  font-family: "ProFontIIx Nerd Font"; /* <==== it corrects the icons.. */
+  margin: 0px;
+  padding: 0;
+  background:
+    linear-Gradient(to top, @accent 2px, transparent 6px),
+    linear-gradient(to bottom, @accent 2px, transparent 6px), @accent_dark;
+  border-top: 1.5px solid @accent_glow;
+  border-bottom: 1.5px solid @accent_glow;
+  padding-right: 20px;
+}
+
+#workspaces button {
+  font-size: 7px;
+  padding: 0px;
+  padding-left: 16px;
+  padding-right: 16px;
+  border-radius: 0rem;
+  margin: 0px;
+  margin-right: -20px;
+  background:
+        /* right accent_glow */
+    linear-gradient(
+      -63deg,
+      transparent 12.5px,
+      @accent_glow 13px,
+      @accent_light 13.5px,
+      @accent 17.5px,
+      transparent 30px
+    ),
+    linear-gradient(
+      117deg,
+      transparent 14.5px,
+      black 15px,
+      @accent_bg_dark 15.5px,
+      transparent 29px
+    );
+  /* linear-gradient(117deg,transparent 12px, @accent_glow 12px,transparent 20px); */
+  /* @accent_bg_dark; */
+
+  transition: all 0.12s ease-out;
+}
+#workspaces button.empty .workspace-label {
+  margin-bottom: -4px;
+  font-size: 14px;
+  margin-left: 5px;
+}
+#workspaces button.special {
+  background: linear-Gradient(
+    -63deg,
+    transparent 12px,
+    @accent_glow 12px,
+    @accent 15px,
+    @accent
+  );
+  padding-right: 22px;
+  padding-left: 5px;
+}
+#workspaces button.special.active {
+  background:
+		/* right accent_glow */ linear-gradient(
+    -63deg,
+    transparent 14.5px,
+    @accent_light 15px,
+    @primary 25px,
+    @accent_bg
+  );
+}
+/* #workspaces button.special .workspace-label{margin-left: 15px;} */
+#workspaces button.active {
+  background:
+        /* right accent_glow */
+    linear-gradient(
+      -63deg,
+      transparent 14.5px,
+      @contrast_glow 15px,
+      @contrast 17.5px,
+      @contrast_dark 23px,
+      transparent 55%
+    ),
+    /* left accent_glow */
+    linear-gradient(
+        117deg,
+        transparent 13.5px,
+        @contrast_glow 14px,
+        @contrast 16.5px,
+        @contrast_dark 22px,
+        transparent 55%
+      ),
+    linear-gradient(
+      117deg,
+      transparent 13px,
+      @contrast_dark 13px,
+      @contrast_dark 50.1%,
+      transparent 50.1%
+    ),
+    linear-gradient(
+      -63deg,
+      transparent 12px,
+      @contrast_dark 12px,
+      @contrast_dark 50.1%,
+      transparent 50.1%
+    );
+  padding-right: 28px;
+  padding-left: 28px;
+  /* margin-right: -14px; */
+}
+#workspaces .taskbar-window {
+  margin: 0;
+  margin-bottom: -4px;
+}
+#workspaces .workspace-label {
+  font-size: 0.8rem;
+  margin-top: -4px;
+  margin-right: 5px;
+}
+
+/*===========================*/
+/*=== WINDOW NAME STYLING ===*/
+/*===========================*/
+#window {
+  font-family: "ProFontIIx Nerd Font Propo"; /* <==== it corrects the icons.. */
+  margin: 0px;
+  padding: 0;
+  background:
+    linear-gradient(to right, transparent 15px, @accent), /* this hides top and bottom shadows, towards right, gradually */
+    linear-Gradient(to top, @accent 2px, transparent 6px), /* bottom shadow */
+    linear-gradient(to bottom, @accent 2px, transparent 6px), /* top shadow */
+    linear-gradient(-63deg, @accent 5px, @accent_dark); /* main gradient BG */
+  border-top: 1.5px solid @accent_glow;
+  border-bottom: 1.5px solid @accent_glow;
+  padding-right: 7px;
+}
+
+
+
+/*##################################################################*/
+/*########################  CENTER MODULES  ########################*/
+/*##################################################################*/
+
+
+.modules-center #clock{
+  font-family: "ProFontIIx Nerd Font Propo"; /* <==== it corrects the icons.. */
+  margin: 0px;
+  padding-right:15px;
+  padding-left:15px;
+  background:
+  linear-gradient(to right, @contrast_mid 1px,mix(@contrast_mid,transparent,0.4) 30px,transparent 60%),
+  linear-gradient(to left, @contrast_mid 1px,mix(@contrast_mid,transparent,0.4) 30px,transparent 60%),
+    linear-Gradient(to top, @contrast 2px, transparent 6px,transparent),
+    linear-gradient(to bottom, @contrast 2px, transparent 6px,transparent), @contrast_dark;
+    border-top: 1.5px solid @contrast_glow;
+    border-bottom: 1.5px solid @contrast_glow;
+}
+
+
+
+
+/*##################################################################*/
+/*########################  RIGHT  MODULES  ########################*/
+/*##################################################################*/
+
+
+
+
+/*#################################*/
+/*###    SEPARATORS  STYLING    ###*/
+/*#################################*/
+#custom-separatorR1 {
+  background:
+    /*right side glow*/
+    linear-gradient(-63deg,transparent 11.5px,@accent_glow 12px,@accent_light 13.5px,transparent 15px),
+    /*main BG color*/
+    linear-gradient(-63deg,transparent 11.5px, @accent 11.5px, @accent)
+    ;
+
+  border-top: 1.5px solid @accent_glow;
+  padding-right:8.9;
+  color:transparent;
+}
+
+#custom-separatorR2 {
+  background:
+    /*right side glow*/
+    linear-gradient(-63deg,transparent 11.5px,@contrast_glow 12px,@contrast_mid 14px),
+    /*main BG color*/
+    linear-gradient(-63deg,transparent 11.5px, @contrast_mid 11.5px, @contrast_mid)
+    ;
+
+  border-top: 1.5px solid @contrast_glow;
+  padding-right:8.9;
+  color:transparent;
+}
+#custom-separatorL1 {
+  background:
+    /*right side glow*/
+    linear-gradient(63deg,transparent 11.5px,@contrast_glow 12px,@contrast_mid 14px),
+    /*main BG color*/
+    linear-gradient(63deg,transparent 11.5px, @contrast_mid 11.5px, @contrast_mid)
+    ;
+
+  border-top: 1.5px solid @contrast_glow;
+  padding-right:8.9;
+  color:transparent;
+}

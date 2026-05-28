@@ -1,0 +1,235 @@
+{
+  // i just use this schema for convenient IDE workflow, autocomplete etc
+  // thanks to this guy who made this
+  "$schema": "https://raw.githubusercontent.com/Magniquick/waybar-config-schema/main/schema.json",
+
+
+  
+  /*#########################################################*/
+
+  /*==============================*/
+  /*======   LEFT  MODULE   ======*/
+  /*==============================*/
+  // hyprland workspaces – taskbar-style
+  "hyprland/workspaces": {
+    "cursor": true,
+    "format": "{icon}{windows}",
+    "format-icons": {
+      "empty": "",
+      "magic": "󰘷",
+    },
+    "format-window-separator": "",
+    "on-click": "activate",
+    "on-scroll-up": "hyprctl dispatch workspace e-1",
+    "on-scroll-down": "hyprctl dispatch workspace e+1",
+    "show-special": true,
+
+    "sort-by": "id",
+
+    "workspace-taskbar": {
+      "enable": true,
+      "format": "{icon}",
+      "icon-size": 12,
+      "orientation": "horizontal",
+    },
+
+    // Show workspaces even if empty
+    "all-outputs": true,
+    "persistent-workspaces": {
+      "*": 5,
+      "special:magic": [],
+    },
+  },
+  // window name module with icon
+  "hyprland/window": {
+    "format": "{initialClass}",
+
+    // here comes the valuable modifications
+    "rewrite": {
+      // rename the app if u see any wierd name
+      "dev.zed.Zed": "Zed",
+      "": "󰜬 err404",
+
+      // i dont know why my childish brain did this
+      // i replaced every single small letter with capital
+      "a(.*)": "A$1",
+      "b(.*)": "B$1",
+      "c(.*)": "C$1",
+      "d(.*)": "D$1",
+      "e(.*)": "E$1",
+      "f(.*)": "F$1",
+      "g(.*)": "G$1",
+      "h(.*)": "H$1",
+      "i(.*)": "I$1",
+      "j(.*)": "J$1",
+      "k(.*)": "K$1",
+      "l(.*)": "L$1",
+      "m(.*)": "M$1",
+      "n(.*)": "N$1",
+      "o(.*)": "O$1",
+      "p(.*)": "P$1",
+      "q(.*)": "Q$1",
+      "r(.*)": "R$1",
+      "s(.*)": "S$1",
+      "t(.*)": "T$1",
+      "u(.*)": "U$1",
+      "v(.*)": "V$1",
+      "w(.*)": "W$1",
+      "x(.*)": "X$1",
+      "y(.*)": "Y$1",
+      "z(.*)": "Z$1",
+    },
+
+    "icon": true,
+    "icon-size": 15,
+    "separate-outputs": true,
+    "max-length": 7,
+  },
+  // separator 1 at the end of window module
+  "custom/separatorR1": {
+    "format": "/",
+  },
+  "privacy": {},
+
+  /*#########################################################*/
+  /*#########################################################*/
+
+  /*==============================*/
+  /*======  MIDDLE  MODULE  ======*/
+  /*==============================*/
+  // "separator 2 at the left end of center module"
+  "custom/separatorL1": {
+    "format": "/",
+  },
+  "clock": {
+    "format": "{:%h %d %Y    %r}", // Format for the time (e.g., 14:51 in 24-hour format)
+    "tooltip": false, // Optional: enable tooltip for the time module (often includes a calendar)
+    "tooltip-format": "<tt><big>!! Right click to toggle modes !!\n{calendar}</big></tt>",
+    "on-click": "ags toggle dashboard",
+    "calendar": {
+      "mode": "month",
+      "mode-mon-col": 4,
+      "on-scroll": 1,
+      "format": {
+        "months": "<span color='#ffead3'><b>{}</b></span>",
+        "days": "<span color='#ecc6d9'><b>{}</b></span>",
+        "weeks": "<span color='#99ffdd'><b>W{}</b></span>",
+        "weekdays": "<span color='#ffcc66'><b>{}</b></span>",
+        "today": "<span color='#ff6699'><b><u>{}</u></b></span>",
+      },
+    },
+    "actions": {
+      "on-click-right": "mode",
+      "on-scroll-up": "tz_up",
+      "on-scroll-down": "tz_down",
+      "on-scroll-up": "shift_up",
+      "on-scroll-down": "shift_down",
+    },
+    "interval": 1,
+  },
+  // "separator 3 at the left end of center module"
+  "custom/separatorR2": {
+    "format": "/",
+  },
+
+  /*#########################################################*/
+  /*#########################################################*/
+
+  /*==============================*/
+  /*======   RIGHT MODULE   ======*/
+  /*==============================*/
+
+  // separator 1 at the end of window module
+  "custom/separatorL2": {
+    "format": "/",
+  },
+
+  // tray box
+  "group/traybox": {
+    "orientation": "inherit",
+    "drawer": {
+      "transition-duration": 200,
+      "transition-right-to-left": false,
+    },
+    "modules": ["custom/tray-knob", "tray"],
+  },
+  "custom/tray-knob": {
+    "format": " ",
+  },
+  "tray": {
+    "show-passive-items": true,
+    "spacing": 5,
+    "smooth-scrolling-threshold": null
+  },
+
+  // volume module (wireplumber)
+  "wireplumber": {
+    "format": "{icon} {volume}%",
+    "format-muted": " Mute",
+    "format-icons": ["", "", ""],
+    "states": { "extreme": 101 },
+    "max-volume": 150,
+    "on-click": "n0ctl-run-kitty-centered wiremix",
+    "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+  },
+  
+  // network module (using NetworkManager)
+  "network": {
+    "format-icons": ["󰤟", "󰤢", "󰤥", "󰤨"],
+    "format": " Wifi",
+    "format-disabled": "󰯡 Disabled",
+    "format-disconnected": "󱛅 Umm..",
+    "format-ethernet": " Ethernet",
+    "format-wifi": "{icon} {essid}",
+    "interval": 3,
+    "max-length": 12,
+    "on-click": "n0ctl-run-kitty-centered impala"
+  },
+  
+  // bluetooth
+  "bluetooth": {
+    "format": " {status}",
+    "format-connected": "󰂱 {num_connections}",
+    "format-connected-battery": "󰂱 Linked {num_connections}",
+    "format-disabled": "󰂲 Disabled",
+    "format-no-controller":"󰂲 No Controller",
+    "format-off": "󰂲 Off",
+    "tooltip": true,
+    "tooltip-format": "Connected Devices:\n{device_enumerate}",
+    "tooltip-format-enumerate-connected":"{device_alias} : 󰁹 {device_battery_percentage}",
+    "on-click": "n0ctl-run-kitty-centered bluetui"
+  },
+  
+  // UPower
+  "upower":{
+    "format": "{percentage}",
+    "hide-if-empty": true,
+    "icon-size": 15,
+    "tooltip": true,
+    "tooltip-padding": 5,
+    "tooltip-spacing": 4,
+    "show-icon": true
+  },
+  
+  // custom Swaync btn
+  "custom/swaync": {
+    "tooltip": false,
+    "format": "{icon}<span><sup>{0}</sup></span>",
+    "format-icons": {
+      "notification": "󱅫",
+      "none": "󰂚",
+      "dnd-notification": "󰂛",
+      "dnd-none": "󰂛",
+      "inhibited-notification": "󱅫",
+      "inhibited-none": "󰂚",
+      "dnd-inhibited-notification": "󰂛",
+      "dnd-inhibited-none": "󰂛",
+    },
+    "return-type": "json",
+    "exec-if": "which swaync-client",
+    "exec": "swaync-client -swb",
+    "on-click": "swaync-client -t -sw",
+    "on-click-right": "swaync-client -d -sw",
+    "escape": true,
+  },
+}

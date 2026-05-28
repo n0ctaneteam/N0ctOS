@@ -1,0 +1,36 @@
+{
+  "dashboard":{
+    "scale":{
+      "type":"float",
+      "default":0,
+      "description":"Scale factor (size) of the dashboard"
+    },
+    "font_size":{
+      "type":"float",
+      "default":0,
+      "description":"Font size of the dashboard"
+    },
+    "pfp_url":{
+      "type":"string",
+      "default":"",
+      "description":"URL (relative to ~/... directory, eg. .face means ~/.face) of the profile picture (PNG, squared) to be displayed on the dashboard"
+    }
+  },
+  "bar":{
+    "font_size":{
+      "type":"float",
+      "default":0,
+      "description":"Font size of the bar"
+    },
+    "tray_icons_show":{
+      "type":"boolean",
+      "default":true,
+      "description":"Whether to show tray icons in the bar"
+    },
+    "tray_icons_size":{
+      "type":"float",
+      "default":0,
+      "description":"Size of the tray icons in the bar"
+    }
+  }
+}
