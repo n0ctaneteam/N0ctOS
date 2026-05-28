@@ -1,0 +1,420 @@
+/* //colors// */
+/* this imports the colors from ~/.config/N0ctbar/colors.css */
+@import url("../colors.css"); /* ACTUAL COLORS */
+
+* {
+  font-family: "Hurmit Nerd Font Propo";
+  font-size: 12.0px;
+  font-weight: 700;
+  /* background-color: @accent_glow; */
+  transition-timing-function: steps(1);
+  transition: all 0.1s ease-in-out;
+
+  padding: 0px;
+  margin: 0px;
+
+  /* border: .25px solid white; */
+}
+
+#custom-ags{color:red;}
+
+#waybar{background: transparent;}
+/*##################################################################*/
+/*########################   LEFT MODULES   ########################*/
+/*##################################################################*/
+
+/*===========================*/
+/*===  WORKSPACE STYLING  ===*/
+/*===========================*/
+#workspaces {
+  font-family: "ProFontIIx Nerd Font"; /* <==== it corrects the icons.. */
+  margin: 0px;
+  padding: 0;
+  background: @modules_bg;
+  border-top: 1.5px solid @modules_border;
+  border-bottom: 1.5px solid @modules_border;
+}
+
+#workspaces button {
+  font-size: 0.4em;
+  padding: 0px;
+  padding-right: 16px;
+  border-radius: 0rem;
+  margin: 0px;
+  background:
+    linear-gradient(
+      -63deg,
+      @modules_bg 12.5px,
+      @modules_border 12.5px,
+      @modules_border 13.5px,
+      @modules_bg 13.5px
+    );
+  transition: all 0.12s ease-out;
+}
+
+#workspaces button.empty .workspace-label {
+  margin-bottom: -0.4em;
+  font-size: 1em;
+  margin-left: 0.25em;
+}
+#workspaces button.special {
+  background:
+  linear-gradient(to bottom, @modules_bg 0px, transparent .5px),
+  linear-gradient(to top, @modules_bg 0px, transparent .5px),
+  linear-Gradient(
+    -63deg,
+    @modules_bg 13.5px,
+    @end_modules_border 14px,
+    @end_modules_bg 17px,
+    @end_modules_bg
+  )
+  ;
+  padding-right: 22px;
+  padding-left: 5px;
+}
+#workspaces button.special.active {
+  background:
+    linear-gradient(to bottom, @modules_bg 0.2px, transparent .7px),
+    linear-gradient(to top, @modules_bg 0.2px, transparent .7px),
+		linear-gradient(
+    -63deg,
+    @modules_bg 13.5px,
+    @end_modules_border 14px,
+    @end_modules_active_glow 16px,
+    @end_modules_active_bg 20px,
+    @end_modules_active_bg
+  );
+  padding-right: 28px;
+  padding-left: 28px;
+}
+#workspaces button.special:hover {
+  background:
+    linear-gradient(to bottom, @modules_bg 0.5px, transparent .7px),
+    linear-gradient(to top, @modules_bg 0.5px, transparent .7px),
+		linear-gradient(
+    -63deg,
+    transparent 13.5px,
+    @end_modules_border 13.5px,
+    @end_modules_active_glow 15.8px,
+    @end_modules_active_bg 20px
+  );
+}
+/* #workspaces button.special .workspace-label{margin-left: 15px;} */
+#workspaces button:hover {
+  /*cursor: "hand";*/
+  background:
+        /* right accent_glow */
+    linear-gradient(
+      -63deg,
+      transparent 13.5px,
+      @workspace_btn_hover_border 13.5px,
+      @workspace_btn_hover_glow 17.8px,
+      @workspace_btn_hover_bg 55%,
+      transparent
+    );
+  /* margin-right: -14px; */
+}
+#workspaces button.active {
+  background:
+        /* right accent_glow */
+    linear-gradient(
+      -63deg,
+      transparent 13.5px,
+      @workspace_btn_active_border 13.5px,
+      @workspace_btn_active_glow 15.8px,
+      @workspace_btn_active_bg 55%,
+      transparent
+    );
+  padding-right: 25px;
+  padding-left: 9px;
+  /* margin-right: -14px; */
+}
+#workspaces .taskbar-window {
+  margin: 0;
+  margin-bottom: -4px;
+}
+#workspaces .workspace-label {
+  font-size: 0.8em;
+  margin-top: -4px;
+  margin-right: 5px;
+}
+
+/*===========================*/
+/*=== WINDOW NAME STYLING ===*/
+/*===========================*/
+#window {
+  font-family: "ProFontIIx Nerd Font Propo"; /* <==== it corrects the icons.. */
+  margin: 0px;
+  padding: 0;
+  background: @modules_bg;
+  border-top: 1.5px solid @modules_border;
+  border-bottom: 1.5px solid @modules_border;
+  padding-right: 7px;
+}
+
+/*##################################################################*/
+/*########################  CENTER MODULES  ########################*/
+/*##################################################################*/
+
+.modules-center #clock {
+  font-family: "ProFontIIx Nerd Font Propo"; /* <==== it corrects the icons.. */
+  margin: 0px;
+  padding-right: 15px;
+  padding-left: 15px;
+  background: @secondary_modules_bg;
+  border-top: 1.5px solid @secondary_modules_border;
+  border-bottom: 1.5px solid @secondary_modules_border;
+}
+
+/*##################################################################*/
+/*########################  RIGHT  MODULES  ########################*/
+/*##################################################################*/
+
+/*========================*/
+/*===   TRAY STYLING   ===*/
+/*========================*/
+#traybox {
+  font-family: "ProFontIIx Nerd Font Propo"; /* <==== it corrects the icons.. */
+  margin: 0px;
+  padding: 0;
+  background:@modules_bg;
+  border-top: 1.5px solid @modules_border;
+  border-bottom: 1.5px solid @modules_border;
+  padding-left: 7px;
+  padding-right: 0px;
+  font-size:15px;
+  color: white;
+  transition: all 0.1s linear;
+}
+#traybox:hover{
+  padding-right: 7px;
+}
+#traybox #custom-tray-knob{font-size: 15px;transition: all 0.1s linear;}
+#traybox #tray {
+  margin-left: 3px;transition: all 0.1s linear;
+}
+#traybox #tray menu {
+  background: linear-gradient(
+    150deg,
+    alpha(mix(black, @secondary_modules_bg, 0.6), 0.94) 20%,
+    alpha(mix(black, @secondary_modules_bg, 0.4), 0.6)
+  );
+  border: 2px solid @secondary_modules_border;
+  padding: 3px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/*========================*/
+/*===  VOLUME STYLING  ===*/
+/*========================*/
+#wireplumber {
+  padding: 0px;
+  padding-left: 18px;
+  padding-right: 3px;
+  border-radius: 0rem;
+  margin: 0px;
+  background:
+        /* right accent_glow */ linear-gradient(
+    63deg,
+    @modules_bg 12.5px,
+    @modules_border 12.5px,
+    @modules_border 13.5px,
+    @modules_bg 13.5px
+  );
+  border-top: 1.5px solid @modules_border;
+  border-bottom: 1.5px solid @modules_border;
+
+  transition: all 0.06s ease-out;
+}
+#wireplumber.extreme{color: @secondary_fg;}
+#wireplumber.muted{color: @radio_active_fg}
+
+/*========================*/
+/*===   WIFI STYLING   ===*/
+/*========================*/
+#network {
+  padding: 0px;
+  padding-left: 18px;
+  padding-right: 3px;
+  border-radius: 0rem;
+  margin: 0px;
+  background:
+        /* right accent_glow */ linear-gradient(
+    63deg,
+    @modules_bg 12.5px,
+    @modules_border 12.5px,
+    @modules_border 13.5px,
+    @modules_bg 13.5px
+  );
+  border-top: 1.5px solid @modules_border;
+  border-bottom: 1.5px solid @modules_border;
+  transition: all 0.06s ease-out;
+}
+#network.disabled{color: @radio_active_fg;}
+#network.disconnected{color: @secondary_fg;} 
+
+
+/*=============================*/
+/*===   BLUETOOTH STYLING   ===*/
+/*=============================*/
+#bluetooth {
+  padding: 0px;
+  padding-left: 18px;
+  padding-right: 3px;
+  border-radius: 0rem;
+  margin: 0px;
+  background:
+        /* right accent_glow */ linear-gradient(
+    63deg,
+    @modules_bg 12.5px,
+    @modules_border 12.5px,
+    @modules_border 13.5px,
+    @modules_bg 13.5px
+  );
+  border-top: 1.5px solid @modules_border;
+  border-bottom: 1.5px solid @modules_border;
+  transition: all 0.06s ease-out;
+}
+#bluetooth.disabled , #bluetooth.no-controller{color: @radio_active_fg;}
+#bluetooth.off{color: @secondary_fg;}
+
+/*===========================*/
+/*===   BATTERY STYLING   ===*/
+/*===========================*/
+#upower {
+  padding: 0px;
+  padding-left: 18px;
+  padding-right: 3px;
+  border-radius: 0rem;
+  margin: 0px;
+  background:
+        /* right accent_glow */ linear-gradient(
+    63deg,
+    @modules_bg 12.5px,
+    @modules_border 12.5px,
+    @modules_border 13.5px,
+    @modules_bg 13.5px
+  );
+  border-top: 1.5px solid @modules_border;
+  border-bottom: 1.5px solid @modules_border;
+  transition: all 0.06s ease-out;
+}
+#upower.charging{color: @secondary_fg}
+
+/*#################################*/
+/*###   MODULES HOVER STYLING   ###*/
+/*#################################*/
+#upower:hover , #bluetooth:hover, #network:hover, #wireplumber:hover{
+  background:
+        /* right accent_glow */
+    linear-gradient(
+      63deg,
+      @modules_bg 13.5px,
+      @workspace_btn_hover_border 13.5px,
+      @workspace_btn_hover_glow 17.8px,
+      @workspace_btn_hover_bg 55%,
+      @modules_bg
+    );
+}
+
+
+/*==========================*/
+/*===   NOTIFI STYLING   ===*/
+/*==========================*/
+#custom-swaync{
+  font-size: 15px;
+  background:
+  linear-gradient(to bottom, @modules_bg 0px, transparent .5px),
+  linear-gradient(to top, @modules_bg 0px, transparent .5px),
+  linear-Gradient(
+    63deg,
+    @modules_bg 13.5px,
+    @end_modules_border 14px,
+    @end_modules_bg 17px,
+    @end_modules_bg
+  )
+  ;
+  padding-left: 22px;
+  padding-right: 5px;
+  border-top: 1.5px solid @modules_border;
+  border-bottom: 1.5px solid @modules_border;
+  transition: all 0.06s ease-out;
+}
+#custom-swaync:hover{
+  font-size: 15px;
+  background:
+    linear-gradient(to bottom, @modules_bg 0.5px, transparent .7px),
+    linear-gradient(to top, @modules_bg 0.5px, transparent .7px),
+		linear-gradient(
+    63deg,
+    @modules_bg 13.5px,
+    @end_modules_border 13.5px,
+    @end_modules_active_glow 15.8px,
+    @end_modules_active_bg 20px
+  );
+  transition: all 0.06s ease-out;
+}
+
+/*#################################*/
+/*###    SEPARATORS  STYLING    ###*/
+/*#################################*/
+#custom-separatorR1{
+  background:
+    linear-gradient(
+      -63deg,
+      transparent 12.5px,
+      @modules_border 12.5px,
+      @modules_border 14px,
+      @modules_bg 14px
+    );
+  font-size:12px;
+  border-top: 1.5px solid @modules_border;
+  padding-right: 8.9;
+  color: transparent;
+}
+
+#custom-separatorL1 {
+  background:
+    /*right side glow*/
+    linear-gradient(
+      63deg,
+      transparent 12.5px,
+      @secondary_modules_border 12.5px,
+      @secondary_modules_border 14px,
+      @secondary_modules_bg 14px
+    );
+  font-size:12px;
+  border-top: 1.5px solid @secondary_modules_border;
+  padding-right: 8.9;
+  color: transparent;
+}
+#custom-separatorR2 {
+  background:
+    linear-gradient(
+      -63deg,
+      transparent 12.5px,
+      @secondary_modules_border 12.5px,
+      @secondary_modules_border 14px,
+      @secondary_modules_bg 14px
+    );
+  font-size:12px;
+  border-top: 1.5px solid @secondary_modules_border;
+  padding-right: 8.9;
+  color: transparent;
+}
+#custom-separatorL2 {
+  background:
+    /*right side glow*/
+    linear-gradient(
+      63deg,
+      transparent 12.5px,
+      @modules_border 12.5px,
+      @modules_border 14px,
+      @modules_bg 14px
+    );
+  font-size:12px;
+  border-top: 1.5px solid @modules_border;
+  padding-right: 8.9;
+  color: transparent;
+}

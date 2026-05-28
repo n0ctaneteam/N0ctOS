@@ -1,0 +1,10 @@
+{
+    "layer":"top",
+    "position":"bottom",
+    "height":3,
+    "reload-style-on-change": true,
+
+
+    
+    "include":["~/.config/N0ctBar/waybar/layout.jsonc"] //render the final layout
+} 

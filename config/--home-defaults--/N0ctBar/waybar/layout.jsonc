@@ -1,0 +1,22 @@
+{
+  "include": ["~/.config/N0ctBar/waybar/components.jsonc","~/.config/N0ctBar/waybar/custom.jsonc"], //import the user selected components
+
+  //auto generated code by bar customizer
+  "modules-left": [
+    "hyprland/workspaces",
+    "hyprland/window",
+    "custom/separatorR1",
+    "privacy",
+    "custom/ags",
+
+    "",
+  ], 
+  
+  "modules-center": [
+    "custom/separatorL1",
+    "clock",
+    "custom/separatorR2",
+  ],
+
+  "modules-right": ["custom/separatorL2","group/traybox","wireplumber","network","bluetooth","upower","custom/swaync", ""],
+}
