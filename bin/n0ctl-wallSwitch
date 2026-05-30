@@ -1,11 +1,6 @@
-#!/bin/env bash
+#!/usr/bin/env bash
 
-
-# PART OF OS, DONT TOUCH IT
-# 
-# THIS IS THE BACKEND OF WALLPAPER SWITCHING AND MATUGEN+HELLWAL COLOR GENERATION
-
-set -e
+# set -e
 
 export IMG="$1"
 if [[ -z "$IMG" ]]; then
@@ -19,14 +14,14 @@ if [[ ! -f "$IMG" ]]; then
 fi
 
 # Start swww daemon if not running
-if ! pgrep -x swww-daemon >/dev/null; then
-  swww-daemon &
+if ! pgrep -x awww-daemon >/dev/null; then
+  awww-daemon &
   sleep 0.5
 fi
 
 # Apply wallpaper
 
-swww img "$IMG" \
+awww img "$IMG" \
   --transition-type any \
   --transition-fps 60 \
   --transition-duration 0.8
@@ -38,10 +33,25 @@ if $n0ctl_neon_mode ; then
 else
     hellwal -i "$IMG" -d --bright-offset 0.1
 fi
-matugen image "$IMG" -c ~/.config/matugen/config.toml --mode dark --show-colors -t scheme-content
+matugen image "$IMG" -c ~/.config/matugen/config.toml --mode dark --show-colors -t scheme-content --source-color-index 0
 
-n0ctl-themeReload
+hellwalCacheDir="$HOME/.cache/hellwal"
+cp $hellwalCacheDir/* ~/.config/hellwal/ 
+
+echo "Reloading theme"
+
+echo "applying hellwal babe !!"
+HELLWAL="$HOME/.config/hellwal"
+cp "$HELLWAL/gtk copy.css" ~/.config/gtk-3.0/colors.css
+cp "$HELLWAL/gtk copy.css" ~/.config/gtk-4.0/colors.css
+cp "$HELLWAL/qt-colors.conf" ~/.config/Kvantum
+killall -9 nautilus gnome-clocks file-roller; gsettings set org.gnome.desktop.interface gtk-theme adw-gtk3-dark
+# relaunch n0ctbar
+n0ctbar run
+#hyprland
+hyprctl reload
+echo "Updated the theme."
 
 cp "$IMG" $HOME/Pictures/wallpaper.png
 
-echo "Wallpaper + theme applied."
+echo "Wallpaper + Matugen theme applied."

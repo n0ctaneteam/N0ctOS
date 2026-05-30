@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+SUB_CMD="$1"
+
+if [[ -z "$SUB_CMD" ]]; then
+  echo -e "\n\n\\e[32m=== (re)Launching N0ctBar... ===\\e[0m"
+  echo -e "**use 'n0ctbar help' for more options**\n\n"
+
+  chmod +x ~/.config/N0ctBar/launch.sh
+  ~/.config/N0ctBar/launch.sh
+else
+  case "$SUB_CMD" in
+    "run")
+      ~/.config/N0ctBar/launch.sh
+      ;;
+    "config")
+      ~/.config/N0ctConfig/launch.sh
+      ;;
+    "help")
+      echo -e "\n\n\\e[32m=== N0ctBar Help Menu ===\\e[0m"
+      echo -e "Available sub-commands:\n"
+      echo -e "\\e[36mrun\\e[0m - (re)launches N0ctBar"
+      echo -e "\\e[36mconfig\\e[0m - opens the N0ctConfig menu for customizing N0ctBar"
+      echo -e "\\e[36mhelp\\e[0m - displays this help menu\n"
+      ;;
+    *)
+      SUB_CMD=""
+    ;;
+  esac
+fi
+

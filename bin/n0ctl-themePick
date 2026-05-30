@@ -1,0 +1,27 @@
+#!/bin/bash
+# Set some variables
+theme_dir="${HOME}/.config/N0ctOS/themes"
+rofi_command="rofi -x11 -dmenu -theme ${HOME}/.config/rofi/themeSelect.rasi -theme-str ${rofi_override}"
+
+
+physical_monitor_size=24
+monitor_res=$(hyprctl monitors |grep -A2 Monitor |head -n 2 |awk '{print $1}' | grep -oE '^[0-9]+')
+dotsperinch=$(echo "scale=2; $monitor_res / $physical_monitor_size" | bc | xargs printf "%.0f")
+monitor_res=$(( $monitor_res * $physical_monitor_size / $dotsperinch ))
+
+rofi_override="element-icon{size:${monitor_res}px;border-radius:0px;}"
+
+
+# Select a picture with rofi
+theme_selection=$(find "${theme_dir}" -maxdepth 1 -mindepth 1 -type d ! -name '#*' -exec basename {} \; | sort | while read -r A ; do  echo -en "$A\x00icon\x1f""${theme_dir}"/"$A/head.png\n" ; done | $rofi_command)
+
+
+# Set the wallpaper
+[[ -n "$theme_selection" ]] || exit 1
+rm -r ${theme_dir}/"#current#"/*
+cp -r ${theme_dir}/${theme_selection}/* ${theme_dir}/"#current#"
+n0ctl-themeLoad ${theme_selection}
+n0ctl-wallPick ${theme_dir}/${theme_selection}/"#wallpapers#" 1
+bash 
+
+exit 0

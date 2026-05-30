@@ -1,0 +1,10 @@
+#!/bin/env bash
+
+# Unblock wifi and bluetooth
+rfkill unblock wifi && rfkill unblock bluetooth
+
+# start the services
+nmcli radio wifi on
+bluetoothctl power on
+bluetoothctl discoverable on
+bluetoothctl pairable on

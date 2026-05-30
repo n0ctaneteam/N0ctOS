@@ -1,0 +1,21 @@
+#!/bin/bash
+# Set some variables
+wall_dir=~/.config/N0ctOS/themes/#current#/#wallpapers#
+
+if [[ -n "$2" ]]; then
+  rows=$2
+else
+  rows=1
+fi
+rofi_command="rofi -l $rows -x11 -dmenu -theme ${HOME}/.config/rofi/wallSelect.rasi -theme-str ${rofi_override}"
+
+
+
+# Select a picture with rofi
+wall_selection=$(find "${wall_dir}"  -maxdepth 1  -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" \) -exec basename {} \; | sort | while read -r A ; do  echo -en "$A\x00icon\x1f""${wall_dir}"/"$A\n" ; done | $rofi_command)
+
+# Set the wallpaper
+[[ -n "$wall_selection" ]] || exit 1
+n0ctl-wallSwitch ${wall_dir}/${wall_selection}
+
+exit 0

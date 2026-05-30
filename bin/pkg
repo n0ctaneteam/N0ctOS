@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-# SIMPLE PKG UTILITY
-# INSTEAD OF ALIAS TO BRING MORE CONTROL
-
 set -e
 
 # ---- config ----
@@ -33,7 +30,7 @@ while getopts ":irou" opt; do
     i) INSTALL=true ;;
     r) REMOVE=true ;;
     o) ONLY_OFFICIAL=true ;;
-    u) yay -Syyu --noconfirm --quiet --needed;;
+    u) yay -Syyu ;;
     *) usage ;;
   esac
 done

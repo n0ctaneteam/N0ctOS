@@ -1,27 +1,37 @@
-#!/bin/env bash
+#!/usr/bin/env bash
 
-# NOT AN ESSENTIAL PART OF OS...
-# JUST FOR TESTING
-# 
-# IF U WANNA SETUP RANDOM WALLPAPER INSTEAD OF MENU BASED SWITCHER...
-# JUST GO TO HYPR/MODULES/BINDINGS AND CHANGE/ADD THE BIND TO RUN THIS BIN FILE (just write n0ctl-randomWallpaper) 
+wallpapers=(
+  "/home/n0ctanedev/Wallpaper-Bank/wallpapers/Anime-Girl5.png"
+  "/home/n0ctanedev/Wallpaper-Bank/wallpapers/Anime-Purple-eyes.png"
+  "/home/n0ctanedev/Wallpaper-Bank/wallpapers/Anime-Room.png"
+  "/home/n0ctanedev/Wallpaper-Bank/wallpapers/City-Rainy-Night.png"
+  "/home/n0ctanedev/Wallpaper-Bank/wallpapers/City-Rain.png"
+  "/home/n0ctanedev/Wallpaper-Bank/wallpapers/Comets-of-that-night.jpg"
+  "/home/n0ctanedev/Wallpaper-Bank/wallpapers/Dark_Nature.png"
+  "/home/n0ctanedev/Wallpaper-Bank/wallpapers/Game-GTA.png"
+  "/home/n0ctanedev/Wallpaper-Bank/wallpapers/Balcony-ja.png"
+  "/home/n0ctanedev/Wallpaper-Bank/wallpapers/Dark_window.png"
+  "/home/n0ctanedev/Wallpaper-Bank/wallpapers/Fantasy-Japanese-Street.png"
+  "/home/n0ctanedev/Downloads/N0ctOS_logo_with_bg.png"
+)
 
-WALLPAPER_DIR_PATH="$HOME"/Pictures/wallpapers/
+rand_index=$(( RANDOM % ${#wallpapers[@]} ))
 
-mapfile -t wallpapers < <(find "$WALLPAPER_DIR_PATH" -type f)
-
-if (( ${#wallpapers[@]} == 0 )); then
-    echo "No wallpapers found in $WALLPAPER_DIR_PATH"
-    exit 1
-fi
-
-RANDOM_WALLPAPER="${wallpapers[RANDOM % ${#wallpapers[@]}]}"
-
-
-while [[ "$RANDOM_WALLPAPER" == "$OLD" ]]; do
-    RANDOM_WALLPAPER="${wallpapers[RANDOM % ${#wallpapers[@]}]}"
+while [[ "$rand_index" == "$oldRandom" ]]; do
+    rand_index=$(( RANDOM % ${#wallpapers[@]} ))
 done
-export OLD="$RANDOM_WALLPAPER"
 
+export oldRandom="$rand_index"
 picked="${wallpapers[$rand_index]}"
 n0ctl-wallSwitch $picked
+
+
+
+# sleep 0.2
+
+# file-roller &
+# nautilus &
+# gnome-clocks &
+# # kitty -e bash -c "fastfetch; exec bash"
+# sleep 1.5
+# test2.sh

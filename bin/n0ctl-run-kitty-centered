@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+if [ "$#" -eq 0 ]; then
+  echo "Usage: $0 <run-command> [command-args...]"
+  exit 1
+fi
+
+hyprctl dispatch closewindow class:tui-float | kitty \
+  --class tui-float \
+  --title "Floating TUI" \
+  --override font_size=10 \
+  --single-instance \
+  --detach \
+  "$@"

@@ -1,0 +1,24 @@
+#!/bin/env bash
+theme=$1
+theme_dir=~/.config/N0ctOS/themes/${theme}
+
+config_dir=~/.config
+
+if [[ -z "${theme}" ]]; then
+	echo "No theme defined"
+	break
+fi
+
+for _file in ${theme_dir}/*; do
+  echo "$_file"
+done
+
+if [[ -n "${theme_dir}/N0ctBar/colors.css" ]]; then
+  cp ${theme_dir}/N0ctBar/colors.css ${config_dir}/N0ctBar/colors.css
+fi
+# if [[ -n "${theme_dir}/N0ctBar/colors.scss" ]]; then
+#   cp ${theme_dir}/N0ctBar/colors.scss ${config_dir}/N0ctBar/colors.scss
+# fi
+# if [[ -n "${theme_dir}/N0ctBar/colors.css" ]]; then
+#   cp ${theme_dir}/N0ctBar/colors.css ${config_dir}/N0ctBar/colors.css
+# fi

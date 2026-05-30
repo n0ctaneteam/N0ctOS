@@ -1,35 +1,38 @@
 #!/bin/env bash
 
-# install base packages
-notify(){
-    echo -e "\x1b[32;1;4m====== $@ ======"
-}
 
+# if (( "$ISO_MODE" == true )); then
+# 	exit 0
+# fi
+
+# install base packages
 # update system
-notify Updating System
-sudo pacman -Syyu --noconfirm --color --quiet
+notify installing Git, Yay, Paru
+sudo pacman -Syy --noconfirm
 
 # git, base-devel
-notify "Checking Git & Base-devel"
-sudo pacman -S git base-devel --noconfirm --color --needed --quiet
-notify "Git & Base-devel Installed"
+info "Checking Git & Base-devel"
+sudo pacman -S git base-devel --noconfirm --needed
+info "Git & Base-devel Installed"
 
 # install yay
 if command -v yay &> /dev/null; then
-    notify "yay is installed."
+    info "yay is installed."
 else
-    notify "Installing Yay"
+    info "Installing Yay"
+    cd
     git clone https://aur.archlinux.org/yay-bin.git && cd yay-bin && makepkg -si
-    notify "YAY is installed !!!"
+    info "YAY is installed !!!"
 fi
 
 
 # install paru
 if command -v paru &> /dev/null; then
-    notify "PARU is installed."
+    info "PARU is installed."
 else
-    notify "Installing Paru"
+    info "Installing Paru"
+    cd
     git clone https://aur.archlinux.org/paru.git && cd paru && makepkg -si
-    notify "Paru is installed !!!"
+    info "Paru is installed !!!"
 fi
 
