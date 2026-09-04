@@ -1,0 +1,6 @@
+module qs.core.ui
+
+Button Button.qml
+CutBox CutBox.qml
+Slider Slider.qml
+Tabs Tabs.qml

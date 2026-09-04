@@ -1,0 +1,7 @@
+{
+  "_branch":"development", // [development / stable / lts]
+  "_usrname":"N0ctane Dev",
+  "_birthdate":"30-09-09", // {dd-mm-yy}
+  "_lastupdated":"01-01-01", // auto updated, dont modify
+  "_gitusrname":"N0ctaneDev", 
+}

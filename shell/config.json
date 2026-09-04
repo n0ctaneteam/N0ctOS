@@ -1,0 +1,28 @@
+{
+    "theme": {
+        "name": "default"
+    },
+
+    "blobs": {
+        "br": ["clock"],
+        "bl": ["cpu", "clock"],
+        "bc": ["launcher", "cpu", "clock"],
+        "tr": ["launcher"],
+        "tl": ["clock", "cpu"],
+        "tc": ["cpu"],
+        "left": ["clock", "launcher"],
+        "right": ["launcher", "clock"]
+    },
+
+    "blobSwitch": {
+        "modifier": "Super",
+        "next": "J",
+        "previous": "K"
+    },
+    
+    "otherStuff": {
+        "foo": true
+    }
+
+    
+}

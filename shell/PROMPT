@@ -1,0 +1,43 @@
+Assignment No :3									Date :
+AIM OF THE ASSIGNMENT : To demonstrare the SELECT  command and its  all clauses and operators on mysql application.
+SYSTEM REQUIREMENT :
+HARDWARE: CPU 64-Bit X86 Processor is preferred. ,A minimum requirement of RAM is 512 MB or more,Minimum 200 MB Harddisk Storage space is required.
+SOFTWARE :OS- Linux, Mac OS or Windows 10 or Later, MYSQL 8.0 or more server  must be installed. 
+THEORY/CODE :
+SELECT : The SELECT command or DQL  in SQL is used to retrieve data from one or more tables within a database.
+The basic syntax of the SELECT statement is:
+1.	SELECT column1, column2, ... FROM table_name;
+Code :  MySQL>     SELECT  rollno,sname  FROM STUDENT;
+
+The SELECT command forms the basis of data retrieval and manipulation in SQL, often combined with other clauses and functions for more complex queries.
+2.	Selecting all columns: To retrieve all columns from a table, you can use the asterisk (*) wildcard:
+             Syntax :    SELECT  * FROM table_name;
+             Code :  MySQL>     SELECT  *  FROM STUDENT;
+3.	Filtering data with WHERE: To retrieve only specific rows that meet certain conditions, use the WHERE clause:
+              Syntax  : SELECT< column1, column2> <*>   FROM table WHERE condition;
+              Code :  MySQL>     SELECT  *  FROM student WHERE rollno=1 ;
+      4. Ordering results with ORDER BY: To sort the retrieved data based on one or more columns, use     the ORDER BY clause:
+Syntax : SELECT column1, column2  FROM table_name  ORDER BY column_name [ASC|DESC];
+Code : SELECT *  FROM  student  ORDER BY name;
+5. Retrieving distinct values with DISTINCT: To return only unique (non-duplicate) values from a column, use DISTINCT:
+Syntax  : SELECT DISTINCT column_name FROM table_name;
+Code : SELECT DISTINCT section  FROM student;
+Special Operators: SQL utilizes a variety of operators to perform operations on data, including special operators that handle specific types of comparisons or conditions.Common Special Operators in SQL:
+1.	IN Operator: Checks if a value matches any value within a specified list.
+Code :   SELECT * FROM student WHERE subject IN ('A, 'D');
+2.	BETWEEN Operator: Checks if a value falls within a specified range (inclusive of both start and end values).
+Code:   SELECT * FROM student WHERE rollno BETWEEN 10 AND 50;
+3.	LIKE Operator: Used for pattern matching within string values, typically with wildcard characters (% for any sequence of characters, _ for any single character).
+Code : SELECT * FROM student WHERE Name LIKE 'S%';
+4.	IS NULL / IS NOT NULL Operators: Used to check for the presence or absence of NULL values.
+Code:   SELECT * FROM student WHERE dob IS NULL;
+PROCEDURE :
+1.	Check Mysql software is installed in your computer or not,If installed then choose program menu from start option,within which mysql application is present.
+2.	Or Directly from start menu you can open Mysql .Choose Start Menu from Desktop->Choose MYSQL- and then just press enter key . 
+3.	MySql Propmpt will appear on screen, Type the above SQL commands ,end with stataement terminator ‘;’ and press enter to run the query.
+OUTPUT : See  the output on MYSQL window  screen .  Take a print out and Tag with your practical record.
+CONCLUSION : In the above assignment we  have learnt how to use select command with  different clauses and operators by using  student table on  mysql platform .
+Precaution :
+1.	Check Mysql software is installed in your computer or not.
+2.	Check for  Database in use before using sql commands for table.
+3.	Check for prop er syntax of sql command.

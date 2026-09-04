@@ -1,0 +1,7 @@
+{
+    "id": "clock",
+    "name": "Clock",
+    "version": "1.0.0",
+    "author": "N0ctOS",
+    "module": "Clock.qml"
+}

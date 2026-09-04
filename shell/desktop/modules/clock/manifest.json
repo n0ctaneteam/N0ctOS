@@ -1,0 +1,7 @@
+{
+    "id": "clock",
+    "name": "Clock",
+    "icon": "󰥔",
+    "module": "Clock.qml",
+    "settings": "Settings.qml"
+}

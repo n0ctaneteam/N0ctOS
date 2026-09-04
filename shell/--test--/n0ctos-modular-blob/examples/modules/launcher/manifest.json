@@ -1,0 +1,7 @@
+{
+    "id": "launcher",
+    "name": "Launcher",
+    "version": "1.0.0",
+    "author": "N0ctOS",
+    "module": "Launcher.qml"
+}

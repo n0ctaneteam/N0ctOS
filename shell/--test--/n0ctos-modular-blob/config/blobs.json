@@ -1,0 +1,12 @@
+{
+    "blobs": {
+        "blob1": ["clock"],
+        "blob2": ["cpu", "clock"],
+        "blob3": ["launcher", "cpu", "clock"],
+        "blob4": ["launcher"],
+        "blob5": ["clock", "cpu"],
+        "blob6": ["cpu"],
+        "blob7": ["clock", "launcher"],
+        "blob8": ["launcher", "clock"]
+    }
+}

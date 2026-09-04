@@ -1,0 +1,7 @@
+{
+    "id": "cpu",
+    "name": "CPU",
+    "icon": "󰻠",
+    "module": "Cpu.qml",
+    "settings": "Settings.qml"
+}

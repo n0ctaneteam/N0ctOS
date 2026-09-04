@@ -1,0 +1,7 @@
+{
+    "id": "launcher",
+    "name": "Launcher",
+    "icon": "󰀻",
+    "module": "Launcher.qml",
+    "settings": "Settings.qml"
+}

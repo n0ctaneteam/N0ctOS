@@ -1,3 +1,0 @@
-only place absolute colors here..
-see the files to know what i am talking...
-all others (dynamic) are set by matugen or hellwal
