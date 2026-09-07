@@ -20,8 +20,7 @@ Item {
         _registry = ({})
 
         for (const path of searchPaths) {
-            if (!path)
-                continue
+            if (!path) continue
             _crawl(path)
         }
     }
@@ -35,38 +34,19 @@ Item {
     }
 
     function _crawl(path) {
-        if (!path || !path.length)
-            return
-    
+        if (!path || !path.length) return
+
         console.log("[ModuleRegistry] crawl:", path)
-    
-        const p = crawlComponent.createObject(root, {
-            crawlPath: path
-        })
-    
+
+        const p = crawlComponent.createObject(root, { crawlPath: path })
+
         if (!p) {
             console.warn("[ModuleRegistry] failed to create Process:", path)
             return
         }
-    
+
         _jobs.push(p)
         p.running = true
-    }
-
-    
-
-    function _crawlFinished(process, output) {
-        const path = process.crawlPath
-
-        console.log("[ModuleRegistry] crawl finished:", path)
-        console.log("[ModuleRegistry] manifests:", JSON.stringify(output))
-
-        const manifests = output.trim() ? output.trim().split("\n") : []
-
-        for (const manifest of manifests) {
-            if (manifest.trim())
-                _loadManifest(manifest.trim())
-        }
     }
 
     function _loadManifest(path) {
@@ -87,32 +67,28 @@ Item {
 
     function _manifestLoaded(file) {
         const path = file.manifestPath
-    
+
         try {
             const data = JSON.parse(file.text())
-    
-            console.log(
-                "[ModuleRegistry] manifest:",
-                path,
-                "|",
-                JSON.stringify(data)
-            )
-    
+
+            console.log("[ModuleRegistry] manifest:", path, "|", JSON.stringify(data))
+
             if (!data.id || !data.name || !data.module || !data.settings)
                 throw new Error("manifest requires id, name, module and settings")
-    
+
             const base = path.substring(0, path.lastIndexOf("/"))
-    
+
             const entry = {
                 id: data.id,
                 name: data.name,
                 icon: data.icon || "",
                 modulePath: base + "/" + data.module,
                 settingsPath: base + "/" + data.settings,
+                servicePath: data.service ? base + "/" + data.service : "",
                 fullPath: base,
                 manifestPath: path
             }
-    
+
             if (_registry[data.id]) {
                 console.warn(
                     "[ModuleRegistry] duplicate:",
@@ -122,16 +98,16 @@ Item {
                 file.destroy()
                 return
             }
-    
+
             const next = Object.assign({}, _registry)
             next[data.id] = entry
             _registry = next
-    
+
             console.log(
                 "[ModuleRegistry] REGISTERED:",
                 data.id,
-                "| module:",
-                entry.modulePath
+                "| module:", entry.modulePath,
+                "| service:", entry.servicePath || "<none>"
             )
         } catch (e) {
             console.warn(
@@ -141,7 +117,7 @@ Item {
                 e
             )
         }
-    
+
         file.destroy()
     }
 
@@ -156,12 +132,12 @@ Item {
 
     Component {
         id: crawlComponent
-    
+
         Process {
             id: process
-    
+
             property string crawlPath: ""
-    
+
             command: [
                 "/usr/bin/find",
                 crawlPath,
@@ -170,41 +146,35 @@ Item {
                 "-type", "f",
                 "-name", "manifest.json"
             ]
-    
-            stdout: StdioCollector {
-                id: out
-            }
-    
-            stderr: StdioCollector {
-                id: err
-            }
-    
+
+            stdout: StdioCollector { id: out }
+            stderr: StdioCollector { id: err }
+
             onExited: function(exitCode, exitStatus) {
                 console.log(
                     "[ModuleRegistry] find exited:",
                     crawlPath,
                     "| code:", exitCode
                 )
-    
+
                 if (err.text.trim())
                     console.warn(
                         "[ModuleRegistry] find stderr:",
                         err.text.trim()
                     )
-    
+
                 if (out.text.trim()) {
                     const manifests = out.text.trim().split("\n")
-    
+
                     console.log(
                         "[ModuleRegistry] found",
                         manifests.length,
                         "manifest(s):",
                         JSON.stringify(manifests)
                     )
-    
+
                     for (const manifest of manifests) {
                         const p = manifest.trim()
-    
                         if (p.length)
                             root._loadManifest(p)
                     }
@@ -214,12 +184,11 @@ Item {
                         crawlPath
                     )
                 }
-    
+
                 const index = root._jobs.indexOf(process)
-    
                 if (index !== -1)
                     root._jobs.splice(index, 1)
-    
+
                 Qt.callLater(function() {
                     process.destroy()
                 })
@@ -229,26 +198,22 @@ Item {
 
     Component {
         id: manifestComponent
-    
+
         FileView {
             property string manifestPath: ""
-    
+
             blockLoading: true
             printErrors: true
-    
+
             onLoadedChanged: {
-                if (!loaded)
-                    return
-    
+                if (!loaded) return
                 root._manifestLoaded(this)
             }
-    
+
             onLoadFailed: function(error) {
                 root._manifestFailed(this, error)
             }
         }
-
-        
     }
 
     Component.onCompleted: {

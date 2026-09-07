@@ -3,5 +3,6 @@
     "name": "Launcher",
     "icon": "󰀻",
     "module": "Launcher.qml",
-    "settings": "Settings.qml"
+    "settings": "Settings.qml",
+    "service": "Service.qml"
 }

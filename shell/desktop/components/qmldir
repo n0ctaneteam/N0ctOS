@@ -1,0 +1,6 @@
+module qs.desktop.components
+
+Blob Blob.qml
+Module Module.qml
+Service Service.qml
+ScreenFrame ScreenFrame.qml

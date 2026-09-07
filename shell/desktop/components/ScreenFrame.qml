@@ -201,6 +201,11 @@ Scope {
         searchPaths: [Quickshell.shellPath("desktop/modules")]
     }
 
+    ServiceManager {
+        id: serviceManager
+        moduleRegistry: moduleRegistry
+    }
+
     BlobManager {
         id: blobManager
 

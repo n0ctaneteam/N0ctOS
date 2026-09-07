@@ -15,7 +15,7 @@ Scope {
         id: frame
 // 
         frameLayer:
-            WlrLayer.Top
+            WlrLayer.Bottom
 // 
         frameWidth:
             5
