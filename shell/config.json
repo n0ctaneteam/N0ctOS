@@ -2,27 +2,61 @@
     "theme": {
         "name": "default"
     },
-
     "blobs": {
-        "br": ["clock"],
-        "bl": ["cpu", "clock"],
-        "bc": ["launcher", "cpu", "clock"],
-        "tr": ["launcher"],
-        "tl": ["clock", "cpu"],
-        "tc": ["cpu"],
-        "left": ["clock", "launcher"],
-        "right": ["launcher", "clock"]
+        "br": [
+            "clock"
+        ],
+        "bl": [
+            "cpu",
+            "clock"
+        ],
+        "bc": [
+            "launcher",
+            "cpu",
+            "clock"
+        ],
+        "tr": [
+            "launcher"
+        ],
+        "tl": [
+            "clock",
+            "cpu"
+        ],
+        "tc": [
+            "cpu"
+        ],
+        "left": [
+            "clock",
+            "launcher"
+        ],
+        "right": [
+            "launcher",
+            "clock"
+        ]
     },
-
     "blobSwitch": {
         "modifier": "Super",
         "next": "J",
         "previous": "K"
     },
-    
-    "otherStuff": {
+    "wallpaper": {
+        "monitors": {
+            "eDP-1": {
+                "source": "/home/n0ctanedev/Pictures/wallpapers/Techno-Geek.png",
+                "type": "image",
+                "fitting": "crop"
+            }
+        },
+        "transition": {
+            "id": "zoom",
+            "duration": 5000,
+            "parameters": {}
+        }
+    },
+    "desktop": {
         "foo": true
-    }
-
-    
+    },
+    "screens": [
+        "eDP-1"
+    ]
 }

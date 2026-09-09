@@ -1,0 +1,5 @@
+module qs.desktop.lib
+BlobIPCHandler BlobIPCHandler.qml
+BlobManager BlobManager.qml
+ModuleRegistry ModuleRegistry.qml
+ServiceManager ServiceManager.qml

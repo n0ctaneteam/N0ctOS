@@ -19,6 +19,7 @@ FocusScope {
     // Logical blob state. This is NOT Qt activeFocus.
     property bool blobFocused: false
     property bool hovered: false
+    property bool transientHover: false
 
     readonly property bool isBlobFocused: root.blobFocused
     readonly property bool moduleSpecified: root.activeModule !== ""
@@ -264,16 +265,21 @@ FocusScope {
     function enterHover() {
         root.hovered = true
 
-        // An already selected module means this blob is already
-        // specified. Hovering it must NOT open the selector.
-        if (!root.moduleSpecified)
+        if (!root.moduleSpecified && root.moduleIds.length === 1) {
             root.selectionModule = ""
+            if (root.activateModule(root.moduleIds[0]))
+                root.transientHover = true
+        }
     }
 
     function leaveHover() {
         root.hovered = false
 
-        // Empty + unfocused blob was only temporarily opened by hover.
+        if (root.transientHover && !root.blobFocused) {
+            root.closeBlob()
+            return
+        }
+
         if (!root.moduleSpecified && !root.blobFocused)
             root.closeBlob()
     }
@@ -309,6 +315,7 @@ FocusScope {
         }
 
         root.blobFocused = true
+        root.transientHover = false
 
         if (root.focusManager)
             root.focusManager.focusedBlob = root
@@ -330,6 +337,7 @@ FocusScope {
 
         root.blobFocused = false
         root.hovered = false
+        root.transientHover = false
         root.switching = false
         root.mouseSelector = false
         root.modifierHeld = false
@@ -475,6 +483,19 @@ FocusScope {
         })
 
         return true
+    }
+
+    // Auto-load the sole assigned module of a single-module blob.
+    // Loads + activates without stealing focus; the module is visible
+    // but stays unfocused until the blob is clicked.
+    function activateSingleModule() {
+        if (root.moduleSpecified)
+            return true
+
+        if (root.moduleIds.length !== 1)
+            return false
+
+        return root.activateModule(root.moduleIds[0])
     }
 
     function deactivateModule(id = root.activeModule) {
@@ -1101,8 +1122,10 @@ FocusScope {
         target: root.moduleRegistry
 
         function onRegistryChanged() {
-            // Do NOT auto-select the first module.
-            // A blob stays unspecified until IPC or mouse selection.
+            // Retry activation for a single-module blob while it's
+            // hovered but the module wasn't registered yet.
+            if (root.hovered && !root.moduleSpecified && root.moduleIds.length === 1)
+                root.activateSingleModule()
         }
     }
 

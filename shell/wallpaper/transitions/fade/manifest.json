@@ -1,0 +1,11 @@
+{
+    "id": "fade",
+    "name": "Fade",
+    "author": "N0ctOS",
+    "version": "1.0.0",
+    "type": "qml",
+    "path": "Transition.qml",
+    "icon": "fade",
+    "description": "A smooth cross-fade between wallpapers.",
+    "parameters": {}
+}

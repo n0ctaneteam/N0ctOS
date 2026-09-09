@@ -1,0 +1,5 @@
+module qs.wallpaper.lib
+
+singleton WallpaperManager 1.0 WallpaperManager.qml
+singleton TransitionManager 1.0 TransitionManager.qml
+singleton TransitionRegistry 1.0 TransitionRegistry.qml

@@ -1,0 +1,20 @@
+{
+    "id": "slide",
+    "name": "Slide",
+    "author": "N0ctOS",
+    "version": "1.0.0",
+    "type": "qml",
+    "path": "Transition.qml",
+    "parameters": {
+        "direction": {
+            "type": "string",
+            "default": "left"
+        },
+        "distance": {
+            "type": "real",
+            "default": 1,
+            "min": 0.1,
+            "max": 2
+        }
+    }
+}

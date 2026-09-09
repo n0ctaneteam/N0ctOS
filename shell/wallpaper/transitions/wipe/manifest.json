@@ -1,0 +1,14 @@
+{
+    "id": "wipe",
+    "name": "Wipe",
+    "author": "N0ctOS",
+    "version": "1.0.0",
+    "type": "qml",
+    "path": "Transition.qml",
+    "parameters": {
+        "direction": {
+            "type": "string",
+            "default": "left"
+        }
+    }
+}

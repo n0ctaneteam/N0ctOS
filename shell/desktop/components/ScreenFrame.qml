@@ -4,7 +4,7 @@ import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 
-import "../lib"
+import qs.desktop.lib
 
 Scope {
     id: root
@@ -24,6 +24,7 @@ Scope {
         blur: 1.0,
         opacity: 0.6
     })
+    property bool isPrimaryScreen: false
     property real hoverDetectionSize:8
     property real extendedHoverDetectionSize:20
     property real blobWidth: 300

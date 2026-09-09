@@ -1,0 +1,5 @@
+module qs.wallpaper.components
+
+Transition 1.0 Transition.qml
+TransitionHost 1.0 TransitionHost.qml
+WallpaperLayer 1.0 WallpaperLayer.qml
