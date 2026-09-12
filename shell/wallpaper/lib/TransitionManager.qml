@@ -7,240 +7,122 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    readonly property var registry:
-        TransitionRegistry
-
     readonly property string id:
-        WallpaperManager.transitionConfig.id ||
-        "none"
-
-    readonly property var definition:
-        root.registry.get(root.id)
+        String(
+            WallpaperManager.transitionConfig &&
+            WallpaperManager.transitionConfig.id
+                ? WallpaperManager.transitionConfig.id
+                : "none"
+        )
 
     readonly property int duration:
         Math.max(
             0,
             Number(
-                WallpaperManager.transitionConfig.duration ??
-                500
+                WallpaperManager.transitionConfig &&
+                WallpaperManager.transitionConfig.duration !== undefined
+                    ? WallpaperManager.transitionConfig.duration
+                    : 500
             )
         )
 
-    /*
-     * Manifest defaults + config overrides.
-     * Config always wins.
-     */
     readonly property var parameters:
-        mergedParameters()
+        WallpaperManager.transitionConfig &&
+        WallpaperManager.transitionConfig.parameters &&
+        typeof WallpaperManager.transitionConfig.parameters === "object"
+            ? WallpaperManager.transitionConfig.parameters
+            : {}
 
-    signal changed()
+    readonly property var definition:
+        TransitionRegistry.get(root.id)
 
-    IpcHandler {
-        target: "n0ctos-transition"
+    readonly property string type:
+        root.definition
+            ? String(root.definition.type || "qml")
+            : "none"
 
-        function set(id: string): bool {
-            return root.setTransition(id)
-        }
+    readonly property bool available:
+        root.id !== "none" &&
+        !!root.definition
 
-        function duration(ms: int): bool {
-            return root.setDuration(ms)
-        }
+    readonly property bool isShader:
+        root.available &&
+        root.type.toLowerCase() === "shader"
 
-        function reset(): bool {
-            return root.reset()
-        }
+    readonly property bool isQml:
+        root.available &&
+        !root.isShader
 
-        function get(): string {
-            return root.get()
-        }
+    signal transitionChanged()
 
-        function list(): string {
-            return root.list()
-        }
-    }
-
-    function mergedParameters() {
-        var defaults = {}
-
-        if (root.definition &&
-            root.definition.parameters &&
-            typeof root.definition.parameters === "object") {
-
-            var definitions =
-                root.definition.parameters
-
-            for (var key in definitions) {
-                var parameter =
-                    definitions[key]
-
-                if (parameter &&
-                    parameter.default !== undefined) {
-
-                    defaults[key] =
-                        parameter.default
-                }
-            }
-        }
-
-        var overrides =
-            WallpaperManager
-                .transitionConfig
-                .parameters
-
-        if (overrides &&
-            typeof overrides === "object" &&
-            !Array.isArray(overrides)) {
-
-            for (var overrideKey in overrides)
-                defaults[overrideKey] =
-                    overrides[overrideKey]
-        }
-
-        return defaults
+    function get(id) {
+        return TransitionRegistry.get(
+            String(id || "none")
+        )
     }
 
     function has(id) {
-        if (!id || id === "none")
-            return id === "none"
-
-        return root.registry.has(id)
+        return TransitionRegistry.has(
+            String(id || "")
+        )
     }
 
-    function setTransition(id) {
-        id =
-            String(id || "").trim()
+    function ids() {
+        return TransitionRegistry.ids()
+    }
 
-        if (!id)
-            return false
+    function create(id, parent, properties) {
+        var entry =
+            root.get(id)
 
-        if (id !== "none" &&
-            !root.registry.has(id)) {
-
+        if (!entry) {
             console.warn(
-                "[TransitionManager] unknown transition:",
+                "[TransitionManager] transition not found:",
                 id
             )
 
-            return false
+            return null
         }
 
-        var current =
-            WallpaperManager.transitionConfig
+        if (!entry.componentUrl) {
+            console.warn(
+                "[TransitionManager] transition has no component:",
+                id
+            )
 
-        return WallpaperManager.setTransitionConfig(
-            id,
-            Number(
-                current.duration ?? 500
-            ),
-            current.parameters || {}
-        )
+            return null
+        }
+
+        var component =
+            Qt.createComponent(
+                entry.componentUrl,
+                Component.Asynchronous
+            )
+
+        if (!component) {
+            console.warn(
+                "[TransitionManager] failed creating component:",
+                entry.componentUrl
+            )
+
+            return null
+        }
+
+        return {
+            component: component,
+            entry: entry
+        }
     }
 
-    function setDuration(ms) {
-        var current =
-            WallpaperManager.transitionConfig
-
-        return WallpaperManager.setTransitionConfig(
-            current.id || "none",
-            Math.max(
-                0,
-                Number(ms)
-            ),
-            current.parameters || {}
-        )
-    }
-
-    function setParameters(parameters) {
-        if (!parameters ||
-            typeof parameters !== "object" ||
-            Array.isArray(parameters))
-            parameters = {}
-
-        var current =
-            WallpaperManager.transitionConfig
-
-        return WallpaperManager.setTransitionConfig(
-            current.id || "none",
-            Number(
-                current.duration ?? 500
-            ),
-            parameters
-        )
-    }
-
-    function reset() {
-        return WallpaperManager.setTransitionConfig(
-            "none",
-            500,
-            {}
-        )
-    }
-
-    function get() {
-        return JSON.stringify({
+    function current() {
+        return {
             id: root.id,
             duration: root.duration,
-            parameters: root.parameters,
-
-            definition:
-                root.definition
-                    ? {
-                        id:
-                            root.definition.id,
-
-                        name:
-                            root.definition.name,
-
-                        author:
-                            root.definition.author,
-
-                        version:
-                            root.definition.version,
-
-                        type:
-                            root.definition.type,
-
-                        component:
-                            root.definition.componentPath
-                    }
-                    : null
-        }, null, 4)
-    }
-
-    function list() {
-        var ids =
-            root.registry.ids()
-
-        var lines = [
-            "none : built-in instant switch"
-        ]
-
-        for (var i = 0;
-             i < ids.length;
-             ++i) {
-
-            var entry =
-                root.registry.get(ids[i])
-
-            lines.push(
-                entry.id +
-                " : " +
-                entry.name +
-                " [" +
-                entry.type +
-                "] by " +
-                entry.author
+            type: root.type,
+            parameters: Object.assign(
+                {},
+                root.parameters
             )
-        }
-
-        return lines.join("\n")
-    }
-
-    Connections {
-        target: WallpaperManager
-
-        function onTransitionChanged() {
-            root.changed()
         }
     }
 
@@ -248,10 +130,143 @@ Singleton {
         console.log(
             "[TransitionManager] START"
         )
+    }
 
-        console.log(
-            "[TransitionManager] current:",
-            root.id
+    Connections {
+        target: WallpaperManager
+
+        function onTransitionChanged() {
+            root.transitionChanged()
+        }
+    }
+
+    Connections {
+        target: TransitionRegistry
+
+        function onRegistryChanged() {
+            root.transitionChanged()
+        }
+    }
+
+    IpcHandler {
+        target: "n0ctos-transition"
+    
+        function set(id: string): bool {
+            return root.setTransition(id)
+        }
+    
+        function duration(ms: int): bool {
+            return root.setDuration(ms)
+        }
+    
+        function setConfig(id: string, ms: int): bool {
+            return root.setConfig(id, ms)
+        }
+    
+        function status(): string {
+            return root.status()
+        }
+    
+        function list(): string {
+            return root.list()
+        }
+    
+        function get(): string {
+            return root.id
+        }
+    
+        function getDuration(): int {
+            return root.duration
+        }
+    }
+
+    function setTransition(id) {
+        id = String(id || "none")
+    
+        if (id !== "none" && !TransitionRegistry.has(id)) {
+            console.warn(
+                "[TransitionManager] transition not found:",
+                id
+            )
+            return false
+        }
+    
+        return WallpaperManager.setTransitionConfig(
+            id,
+            root.duration,
+            root.parameters
         )
+    }
+    
+    function setDuration(ms) {
+        ms = Math.max(0, Number(ms))
+    
+        return WallpaperManager.setTransitionConfig(
+            root.id,
+            ms,
+            root.parameters
+        )
+    }
+    
+    function setConfig(id, ms) {
+        id = String(id || "none")
+        ms = Math.max(0, Number(ms))
+    
+        if (id !== "none" && !TransitionRegistry.has(id)) {
+            console.warn(
+                "[TransitionManager] transition not found:",
+                id
+            )
+            return false
+        }
+    
+        return WallpaperManager.setTransitionConfig(
+            id,
+            ms,
+            root.parameters
+        )
+    }
+    
+    function status() {
+        var entry = root.definition
+    
+        return JSON.stringify({
+            id: root.id,
+            duration: root.duration,
+            type: root.type,
+            available: root.available,
+            parameters: root.parameters,
+            name: entry ? String(entry.name || root.id) : ""
+        })
+    }
+    
+    function list() {
+        var ids = TransitionRegistry.ids()
+    
+        if (!ids.length)
+            return "(no transitions discovered)"
+    
+        var lines = []
+    
+        for (var i = 0; i < ids.length; ++i) {
+            var id = ids[i]
+            var entry = TransitionRegistry.get(id)
+    
+            if (!entry)
+                continue
+    
+            lines.push(
+                id +
+                " : " +
+                String(entry.name || id) +
+                " [" +
+                String(entry.type || "qml") +
+                "]"
+            )
+        }
+    
+        return lines.length
+            ? lines.join("\n")
+            : "(no transitions discovered)"
     }
 }

@@ -4,15 +4,9 @@
     "author": "N0ctOS",
     "version": "1.0.0",
     "type": "qml",
-    "path": "Transition.qml",
-    "icon": "zoom",
-    "description": "The old wallpaper zooms away while the new one expands into view.",
+    "path": "Zoom.qml",
+    "description": "Smooth zoom cross-fade with configurable scale amount",
     "parameters": {
-        "amount": {
-            "type": "real",
-            "default": 0.08,
-            "min": 0.0,
-            "max": 0.5
-        }
+        "amount": 0.12
     }
 }

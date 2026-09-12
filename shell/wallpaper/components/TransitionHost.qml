@@ -1,777 +1,1177 @@
 import QtQuick
+import Quickshell
+import qs.wallpaper.components
 import qs.wallpaper.lib
 
 Item {
     id: root
 
-    property var screen: null
-    property var definition: null
+    required property var screen
+
+    property var definition: ({})
+
+    property bool busy: false
+    property real progress: 0
 
     property var currentDefinition: null
-    property var queuedDefinition: null
 
-    property string state: "idle"
-    property real transitionProgress: 0
+    property Item activeSlot: slotA
+    property Item pendingSlot: null
+    property var pendingDefinition: null
 
-    readonly property bool busy: state !== "idle"
-    readonly property real progress: transitionProgress
+    property var transition: null
+    property var transitionComponent: null
+    property var transitionEntry: null
 
-    property Item activeLayer: null
-    property Item stagingLayer: null
-    property Item activeContent: null
-    property Item stagingContent: null
-    property Item activeViewport: null
-    property Item stagingViewport: null
+    property int generation: 0
 
-    property bool initialized: false
-    property bool waitingForReady: false
+    /*
+     * Safety limits.
+     *
+     * These do NOT represent video length or full-file buffering.
+     */
+    property int wallpaperTimeoutMs: 30000
+    property int transitionTimeoutMs: 15000
 
     anchors.fill: parent
+    clip: true
 
-    function cloneDefinition(def) {
-        if (!def || typeof def !== "object")
-            return null
-
-        var copy = {}
-
-        for (var key in def)
-            copy[key] = def[key]
-
-        return copy
+    function inactiveSlot() {
+        return root.activeSlot === slotA
+            ? slotB
+            : slotA
     }
 
     function sameDefinition(a, b) {
-        if (a === b)
-            return true
-
         if (!a || !b)
             return false
 
-        return String(a.source || "") === String(b.source || "") &&
-               String(a.type || "image") === String(b.type || "image") &&
-               String(a.fitting || "crop") === String(b.fitting || "crop")
+        return (
+            String(a.source || "") ===
+                String(b.source || "") &&
+
+            String(a.type || "image") ===
+                String(b.type || "image") &&
+
+            String(a.fitting || "crop") ===
+                String(b.fitting || "crop")
+        )
     }
 
-    function contentForLayer(layer) {
-        return layer === layerA ? contentA : contentB
+    function incomingFrameReady() {
+        return (
+            root.pendingSlot &&
+            root.pendingSlot.wallpaper &&
+            root.pendingSlot.wallpaper.frameReady
+        )
     }
 
-    function viewportForLayer(layer) {
-        return layer === layerA ? viewportA : viewportB
-    }
-
-    function resetContent(content) {
-        if (!content)
+    /*
+     * Release the media held by an inactive slot.
+     *
+     * We keep the slot Item itself because it is our stable A/B
+     * container, but clearing the WallpaperLayer definition causes
+     * its Image/GIF/Video source to be released.
+     */
+    function releaseSlot(slot) {
+        if (!slot)
             return
 
-        content.x = 0
-        content.y = 0
-        content.scale = 1
-        content.rotation = 0
-        content.opacity = 1
+        if (slot.wallpaper) {
+            try {
+                slot.wallpaper.freeze()
+            } catch (e) {
+            }
+        }
+
+        slot.visible = false
+        slot.opacity = 1
+        slot.scale = 1
+        slot.rotation = 0
+        slot.x = 0
+        slot.y = 0
+        slot.z = 1
+
+        slot.definition = ({})
     }
 
-    function resetViewport(viewport) {
-        if (!viewport)
+    function resetSlot(slot) {
+        if (!slot)
             return
 
-        viewport.x = 0
-        viewport.y = 0
-        viewport.width = root.width
-        viewport.height = root.height
-        viewport.opacity = 1
-        viewport.clip = true
+        slot.visible = false
+        slot.opacity = 1
+        slot.scale = 1
+        slot.rotation = 0
+        slot.x = 0
+        slot.y = 0
+        slot.z = 1
+
+        slot.definition = ({})
     }
 
-    function hideViewport(viewport) {
-        if (!viewport)
+    function destroyTransition() {
+        componentTimer.stop()
+        transitionTimer.stop()
+
+        var object =
+            root.transition
+
+        root.transition = null
+        root.transitionComponent = null
+        root.transitionEntry = null
+
+        if (!object)
             return
 
-        viewport.visible = false
-        viewport.opacity = 0
-        viewport.x = 0
-        viewport.y = 0
-        viewport.width = root.width
-        viewport.height = root.height
-        viewport.clip = true
+        try {
+            object.complete()
+        } catch (e) {
+        }
+
+        try {
+            object.destroy()
+        } catch (e) {
+            console.warn(
+                "[TransitionHost] transition destroy error:",
+                e
+            )
+        }
     }
 
-    function request(def) {
-        var requested = root.cloneDefinition(def)
+    /*
+     * Abandon only the incoming wallpaper.
+     *
+     * Current wallpaper remains untouched and visible.
+     */
+    function cancelPendingWallpaper() {
+        root.generation++
 
-        if (!requested)
+        wallpaperTimer.stop()
+        mediaPollTimer.stop()
+        componentTimer.stop()
+        transitionTimer.stop()
+        frameTimer.stop()
+
+        root.destroyTransition()
+
+        if (root.pendingSlot)
+            root.releaseSlot(
+                root.pendingSlot
+            )
+
+        root.pendingSlot = null
+        root.pendingDefinition = null
+
+        root.busy = false
+        root.progress = 0
+    }
+
+    /*
+     * Startup/fallback hard switch.
+     */
+    function hardSwitch(definition) {
+        root.generation++
+
+        wallpaperTimer.stop()
+        mediaPollTimer.stop()
+        componentTimer.stop()
+        transitionTimer.stop()
+        frameTimer.stop()
+
+        root.destroyTransition()
+
+        var incoming =
+            root.inactiveSlot()
+
+        if (!incoming)
             return
 
-        if (!root.initialized) {
-            root.currentDefinition = requested
+        var old =
+            root.activeSlot
+
+        incoming.definition =
+            Object.assign(
+                {},
+                definition || ({})
+            )
+
+        incoming.visible = true
+        incoming.opacity = 1
+        incoming.scale = 1
+        incoming.rotation = 0
+        incoming.x = 0
+        incoming.y = 0
+        incoming.z = 20
+
+        old.visible = false
+        old.z = 1
+
+        root.activeSlot =
+            incoming
+
+        root.currentDefinition =
+            incoming.definition
+
+        root.pendingSlot = null
+        root.pendingDefinition = null
+
+        root.busy = false
+        root.progress = 1
+
+        /*
+         * Release the old media after promotion.
+         */
+        Qt.callLater(function() {
+            root.releaseSlot(old)
+        })
+    }
+
+    function requestDefinition(definition) {
+        var next =
+            definition || ({})
+
+        /*
+         * Initial wallpaper.
+         */
+        if (!root.currentDefinition) {
+            root.activeSlot.definition =
+                Object.assign(
+                    {},
+                    next
+                )
+
+            root.activeSlot.visible = true
+            root.activeSlot.opacity = 1
+            root.activeSlot.z = 20
+
+            root.currentDefinition =
+                root.activeSlot.definition
+
+            root.busy = false
+            root.progress = 1
+
             return
         }
 
-        if (root.state !== "idle") {
-            if (root.stagingLayer &&
-                root.sameDefinition(
-                    requested,
-                    root.stagingLayer.definition))
-                return
+        /*
+         * Same wallpaper.
+         */
+        if (
+            root.sameDefinition(
+                root.currentDefinition,
+                next
+            )
+        )
+            return
 
-            if (root.sameDefinition(
-                    requested,
-                    root.currentDefinition))
-                return
+        /*
+         * Latest request wins while a transition runs.
+         */
+        if (root.busy) {
+            root.pendingDefinition =
+                Object.assign(
+                    {},
+                    next
+                )
 
-            root.queuedDefinition = requested
+            return
+        }
 
-            console.log(
-                "[TransitionHost]",
-                root.screen ? root.screen.name : "(null)",
-                "QUEUED:",
-                String(requested.source || "(none)")
+        root.beginTransition(next)
+    }
+
+    /*
+     * Prepare the incoming wallpaper.
+     */
+    function beginTransition(definition) {
+        var incoming =
+            root.inactiveSlot()
+
+        if (!incoming)
+            return
+
+        var generation =
+            ++root.generation
+
+        wallpaperTimer.stop()
+        mediaPollTimer.stop()
+        componentTimer.stop()
+        transitionTimer.stop()
+        frameTimer.stop()
+
+        root.destroyTransition()
+
+        root.busy = true
+        root.progress = 0
+
+        root.pendingSlot =
+            incoming
+
+        root.pendingDefinition = null
+
+        /*
+         * Freeze the CURRENT wallpaper immediately.
+         *
+         * Video stops now and remains on its current frame.
+         */
+        if (
+            root.activeSlot &&
+            root.activeSlot.wallpaper
+        ) {
+            root.activeSlot.wallpaper.freeze()
+        }
+
+        /*
+         * Make absolutely sure the inactive slot is clean before
+         * reusing it.
+         */
+        root.resetSlot(incoming)
+
+        incoming.definition =
+            Object.assign(
+                {},
+                definition || ({})
+            )
+
+        /*
+         * Incoming is in the scene graph so its media can load,
+         * but it remains below the outgoing wallpaper.
+         */
+        incoming.visible = true
+        incoming.opacity = 1
+        incoming.scale = 1
+        incoming.rotation = 0
+        incoming.x = 0
+        incoming.y = 0
+        incoming.z = 10
+
+        /*
+         * Current wallpaper remains dominant.
+         */
+        root.activeSlot.visible = true
+        root.activeSlot.opacity = 1
+        root.activeSlot.z = 20
+
+        /*
+         * Load the transition plugin while media initializes.
+         */
+        loadTransitionComponent(
+            generation
+        )
+
+        wallpaperTimer.restart()
+        mediaPollTimer.restart()
+    }
+
+    function checkIncomingFrame() {
+        if (!root.busy)
+            return
+
+        if (
+            root.incomingFrameReady()
+        ) {
+            mediaPollTimer.stop()
+
+            /*
+             * Let the scene graph consume the ready frame first.
+             */
+            frameTimer.restart()
+
+            return
+        }
+
+        mediaPollTimer.restart()
+    }
+
+    function loadTransitionComponent(generation) {
+        if (
+            generation !==
+            root.generation
+        )
+            return
+
+        var id =
+            String(
+                TransitionManager.id ||
+                "none"
+            )
+
+        /*
+         * No transition configured.
+         */
+        if (
+            id === "none" ||
+            !TransitionManager.available
+        ) {
+            root.transitionEntry = null
+            return
+        }
+
+        var entry =
+            TransitionManager.get(id)
+
+        if (
+            !entry ||
+            !entry.componentUrl
+        ) {
+            console.warn(
+                "[TransitionHost] transition unavailable:",
+                id
+            )
+
+            root.transitionEntry = null
+            return
+        }
+
+        root.transitionEntry =
+            entry
+
+        var component = null
+
+        try {
+            component =
+                Qt.createComponent(
+                    entry.componentUrl,
+                    Component.Asynchronous
+                )
+        } catch (e) {
+            console.warn(
+                "[TransitionHost] transition create error:",
+                e
+            )
+
+            root.transitionComponent = null
+            return
+        }
+
+        if (!component) {
+            console.warn(
+                "[TransitionHost] transition component creation failed:",
+                entry.componentUrl
+            )
+
+            root.transitionComponent = null
+            return
+        }
+
+        root.transitionComponent =
+            component
+
+        if (
+            component.status ===
+            Component.Error
+        ) {
+            console.warn(
+                "[TransitionHost] transition load error:",
+                component.errorString()
+            )
+
+            root.transitionComponent = null
+            root.transitionEntry = null
+
+            return
+        }
+
+        if (
+            component.status ===
+            Component.Ready
+        ) {
+            tryCreateTransition(
+                generation
             )
 
             return
         }
 
-        if (root.sameDefinition(
-                requested,
-                root.currentDefinition))
-            return
-
-        root.begin(requested)
+        componentTimer.restart()
+        transitionTimer.restart()
     }
 
-    function begin(requested) {
-        var oldLayer = root.activeLayer
-        var newLayer = root.stagingLayer
-        var oldViewport = root.activeViewport
-        var newViewport = root.stagingViewport
+    function checkTransitionComponent() {
+        if (!root.busy) {
+            componentTimer.stop()
+            return
+        }
 
-        root.state = "preparing"
-        root.transitionProgress = 0
-        root.queuedDefinition = null
-        root.waitingForReady = true
+        var component =
+            root.transitionComponent
+
+        if (!component) {
+            componentTimer.stop()
+            return
+        }
+
+        if (
+            component.status ===
+            Component.Ready
+        ) {
+            componentTimer.stop()
+
+            tryCreateTransition(
+                root.generation
+            )
+
+            return
+        }
+
+        if (
+            component.status ===
+            Component.Error
+        ) {
+            componentTimer.stop()
+            transitionTimer.stop()
+
+            console.warn(
+                "[TransitionHost] transition load error:",
+                component.errorString()
+            )
+
+            root.transitionComponent = null
+            root.transitionEntry = null
+
+            if (
+                root.incomingFrameReady()
+            ) {
+                commitWithoutTransition()
+            }
+        }
+    }
+
+    /*
+     * Create transition only after incoming media has an actual
+     * usable frame.
+     */
+    function tryCreateTransition(generation) {
+        if (
+            generation !==
+            root.generation
+        )
+            return
+
+        if (!root.busy)
+            return
+
+        if (
+            !root.incomingFrameReady()
+        )
+            return
+
+        var component =
+            root.transitionComponent
+
+        var entry =
+            root.transitionEntry
+
+        var outgoing =
+            root.activeSlot
+
+        var incoming =
+            root.pendingSlot
+
+        if (
+            !component ||
+            !entry
+        ) {
+            commitWithoutTransition()
+            return
+        }
+
+        if (
+            !outgoing ||
+            !incoming
+        ) {
+            cancelPendingWallpaper()
+            return
+        }
+
+        if (
+            component.status !==
+            Component.Ready
+        )
+            return
+
+        try {
+            root.transition =
+                component.createObject(
+                    root,
+                    {
+                        oldItem:
+                            outgoing,
+
+                        newItem:
+                            incoming,
+
+                        duration:
+                            TransitionManager.duration,
+
+                        parameters:
+                            Object.assign(
+                                {},
+                                TransitionManager.parameters
+                            ),
+
+                        mode:
+                            String(
+                                entry.type ||
+                                "qml"
+                            )
+                    }
+                )
+        } catch (e) {
+            console.warn(
+                "[TransitionHost] transition creation error:",
+                e
+            )
+
+            commitWithoutTransition()
+            return
+        }
+
+        if (!root.transition) {
+            console.warn(
+                "[TransitionHost] transition object creation failed"
+            )
+
+            commitWithoutTransition()
+            return
+        }
+
+        root.transition.z = 100
+        root.transition.visible = false
 
         /*
-         * OLD stays untouched.
+         * Let ShaderEffect / ShaderEffectSource and bindings settle.
          */
-        oldLayer.visible = true
-        oldLayer.opacity = 1
-
-        oldViewport.visible = true
-        oldViewport.opacity = 1
-        oldViewport.x = 0
-        oldViewport.y = 0
-        oldViewport.width = root.width
-        oldViewport.height = root.height
-        oldViewport.clip = true
-        oldViewport.z = 0
-
-        /*
-         * NEW gets the incoming definition.
-         *
-         * Its viewport remains hidden until the media is ready.
-         * This prevents a black flash during preparation.
-         */
-        resetContent(
-            root.contentForLayer(newLayer)
-        )
-
-        newLayer.definition =
-            root.cloneDefinition(requested)
-
-        newLayer.visible = true
-        newLayer.opacity = 1
-
-        newViewport.visible = false
-        newViewport.opacity = 0
-        newViewport.x = 0
-        newViewport.y = 0
-        newViewport.width = root.width
-        newViewport.height = root.height
-        newViewport.clip = true
-        newViewport.z = 1
-
-        console.log(
-            "[TransitionHost]",
-            root.screen ? root.screen.name : "(null)",
-            "BEGIN",
-            "old =",
-            String(root.currentDefinition?.source || "(none)"),
-            "new =",
-            String(requested.source || "(none)")
-        )
-
-        if (newLayer.ready)
-            root.startPreparedTransition()
+        frameTimer.restart()
     }
 
     function startPreparedTransition() {
-        if (root.state !== "preparing")
+        if (!root.busy)
             return
 
-        var newLayer = root.stagingLayer
-        var newViewport = root.stagingViewport
-
-        if (!newLayer || !newLayer.ready)
+        if (
+            !root.incomingFrameReady()
+        )
             return
-
-        root.waitingForReady = false
 
         /*
-         * Reveal the prepared incoming wallpaper.
+         * No transition object.
          */
-        newViewport.visible = true
-        newViewport.opacity = 1
-        newViewport.x = 0
-        newViewport.y = 0
-        newViewport.width = root.width
-        newViewport.height = root.height
-        newViewport.clip = true
-        newViewport.z = 1
+        if (!root.transition) {
+            if (
+                root.transitionEntry === null
+            ) {
+                commitWithoutTransition()
+            }
 
-        var transitionId =
-            String(TransitionManager.id || "none")
-
-        if (transitionId === "none") {
-            root.instantCommit()
             return
         }
 
-        var transitionDefinition =
-            TransitionManager.definition
+        /*
+         * The transition is the first thing that is now allowed to
+         * appear above the outgoing wallpaper.
+         */
+        root.transition.visible = true
 
-        if (!transitionDefinition ||
-            !transitionDefinition.componentUrl) {
-
+        try {
+            root.transition.start()
+        } catch (e) {
             console.warn(
-                "[TransitionHost]",
-                "TRANSITION COMPONENT MISSING:",
-                transitionId
+                "[TransitionHost] transition start error:",
+                e
             )
 
-            root.instantCommit()
-            return
+            commitWithoutTransition()
         }
-
-        root.state = "running"
-
-        transitionLoader.source =
-            transitionDefinition.componentUrl
-
-        console.log(
-            "[TransitionHost]",
-            root.screen ? root.screen.name : "(null)",
-            "LOADING:",
-            transitionId
-        )
     }
 
-    function setupTransition() {
-        if (root.state !== "running")
+    /*
+     * Safe direct promotion.
+     */
+    function commitWithoutTransition() {
+        var incoming =
+            root.pendingSlot
+
+        if (!incoming)
             return
 
-        var t = transitionLoader.item
-
-        if (!t) {
-            console.warn(
-                "[TransitionHost]",
-                "TRANSITION ITEM IS NULL"
-            )
-
-            root.instantCommit()
-            return
-        }
-
-        var fromContent =
-            root.contentForLayer(root.activeLayer)
-
-        var toContent =
-            root.contentForLayer(root.stagingLayer)
-
-        t.from = fromContent
-        t.to = toContent
-
-        t.fromViewport =
-            root.activeViewport
-
-        t.toViewport =
-            root.stagingViewport
-
-        t.fromSource = null
-        t.toSource = null
-
-        t.progress = 0
-
-        t.duration =
-            Math.max(
-                0,
-                Number(
-                    TransitionManager.duration
-                )
-            )
-
-        t.parameters =
-            TransitionManager.parameters || {}
-
-        t.initialized = false
-
-        /*
-         * Both wallpaper contents are full-size.
-         * Viewports perform clipping only.
-         */
-        fromContent.x = 0
-        fromContent.y = 0
-        fromContent.width = root.width
-        fromContent.height = root.height
-
-        toContent.x = 0
-        toContent.y = 0
-        toContent.width = root.width
-        toContent.height = root.height
-
-        root.activeViewport.visible = true
-        root.activeViewport.opacity = 1
-
-        root.stagingViewport.visible = true
-        root.stagingViewport.opacity = 1
-
-        t.initialize()
-
-        if (!t.initialized)
-            t.initialized = true
-
-        console.log(
-            "[TransitionHost]",
-            root.screen ? root.screen.name : "(null)",
-            "TRANSITION READY",
-            "duration =",
-            t.duration
+        if (
+            !root.incomingFrameReady()
         )
-
-        t.start()
-
-        if (t.duration <= 0) {
-            root.transitionProgress = 1
-            root.finishTransition()
-            return
-        }
-
-        progressAnimation.duration =
-            Number(t.duration)
-
-        progressAnimation.restart()
-    }
-
-    function finishTransition() {
-        if (root.state !== "running")
             return
 
-        progressAnimation.stop()
+        var outgoing =
+            root.activeSlot
 
-        var t = transitionLoader.item
+        var queued =
+            root.pendingDefinition
 
-        root.transitionProgress = 1
-
-        if (t)
-            t.progress = 1
-
-        if (t)
-            t.finish()
-
-        var oldLayer = root.activeLayer
-        var newLayer = root.stagingLayer
-
-        var oldViewport = root.activeViewport
-        var newViewport = root.stagingViewport
+        wallpaperTimer.stop()
+        mediaPollTimer.stop()
+        componentTimer.stop()
+        transitionTimer.stop()
+        frameTimer.stop()
 
         /*
-         * Ensure the NEW wallpaper is completely visible.
+         * Incoming first.
          */
-        newViewport.x = 0
-        newViewport.y = 0
-        newViewport.width = root.width
-        newViewport.height = root.height
-        newViewport.clip = true
-        newViewport.opacity = 1
-        newViewport.visible = true
-        newViewport.z = 1
+        incoming.visible = true
+        incoming.opacity = 1
+        incoming.scale = 1
+        incoming.rotation = 0
+        incoming.x = 0
+        incoming.y = 0
+        incoming.z = 30
 
-        newLayer.visible = true
-        newLayer.opacity = 1
-
-        /*
-         * OLD disappears only now.
-         */
-        oldViewport.visible = false
-        oldViewport.opacity = 0
-
-        oldLayer.visible = false
-        oldLayer.opacity = 0
-
-        /*
-         * Commit definition.
-         */
-        root.currentDefinition =
-            root.cloneDefinition(
-                newLayer.definition
-            )
-
-        /*
-         * Physical role swap.
-         */
-        root.activeLayer = newLayer
-        root.stagingLayer = oldLayer
-
-        root.activeViewport = newViewport
-        root.stagingViewport = oldViewport
-
-        root.activeContent =
-            root.contentForLayer(
-                root.activeLayer
-            )
-
-        root.stagingContent =
-            root.contentForLayer(
-                root.stagingLayer
-            )
-
-        /*
-         * Recycle the old side.
-         */
-        root.resetViewport(root.stagingViewport)
-        root.hideViewport(root.stagingViewport)
-        root.resetContent(root.stagingContent)
-
-        root.waitingForReady = false
-        root.transitionProgress = 1
-        root.state = "idle"
-
-        transitionLoader.source = ""
-
-        console.log(
-            "[TransitionHost]",
-            root.screen ? root.screen.name : "(null)",
-            "COMMITTED:",
-            String(
-                root.currentDefinition?.source ||
-                "(none)"
-            )
-        )
-
-        root.processQueue()
-    }
-
-    function instantCommit() {
-        progressAnimation.stop()
-
-        var oldLayer = root.activeLayer
-        var newLayer = root.stagingLayer
-
-        var oldViewport = root.activeViewport
-        var newViewport = root.stagingViewport
-
-        newViewport.x = 0
-        newViewport.y = 0
-        newViewport.width = root.width
-        newViewport.height = root.height
-        newViewport.clip = true
-        newViewport.opacity = 1
-        newViewport.visible = true
-        newViewport.z = 1
-
-        newLayer.visible = true
-        newLayer.opacity = 1
-
-        oldViewport.visible = false
-        oldViewport.opacity = 0
-
-        oldLayer.visible = false
-        oldLayer.opacity = 0
+        root.activeSlot =
+            incoming
 
         root.currentDefinition =
-            root.cloneDefinition(
-                newLayer.definition
-            )
-
-        root.activeLayer = newLayer
-        root.stagingLayer = oldLayer
-
-        root.activeViewport = newViewport
-        root.stagingViewport = oldViewport
-
-        root.activeContent =
-            root.contentForLayer(
-                root.activeLayer
-            )
-
-        root.stagingContent =
-            root.contentForLayer(
-                root.stagingLayer
-            )
-
-        root.resetViewport(root.stagingViewport)
-        root.hideViewport(root.stagingViewport)
-        root.resetContent(root.stagingContent)
-
-        root.transitionProgress = 1
-        root.waitingForReady = false
-        root.state = "idle"
-
-        transitionLoader.source = ""
-
-        console.log(
-            "[TransitionHost]",
-            root.screen ? root.screen.name : "(null)",
-            "INSTANT COMMIT:",
-            String(
-                root.currentDefinition?.source ||
-                "(none)"
-            )
-        )
-
-        root.processQueue()
-    }
-
-    function processQueue() {
-        var next =
-            root.queuedDefinition
-
-        root.queuedDefinition = null
-
-        if (next &&
-            !root.sameDefinition(
-                next,
-                root.currentDefinition)) {
-
-            root.begin(next)
-            return
-        }
+            incoming.definition
 
         /*
-         * Catch changes made by WallpaperManager while busy.
+         * Outgoing disappears.
          */
-        if (!root.sameDefinition(
-                root.definition,
-                root.currentDefinition)) {
+        outgoing.visible = false
+        outgoing.opacity = 1
+        outgoing.scale = 1
+        outgoing.rotation = 0
+        outgoing.x = 0
+        outgoing.y = 0
+        outgoing.z = 1
 
-            root.begin(
-                root.cloneDefinition(
-                    root.definition
-                )
-            )
-        }
+        root.pendingSlot = null
+        root.pendingDefinition = null
+
+        root.busy = false
+        root.progress = 1
+
+        root.destroyTransition()
+
+        /*
+         * Release old media after the new wallpaper is already
+         * active.
+         */
+        Qt.callLater(function() {
+            root.releaseSlot(outgoing)
+
+            if (queued) {
+                if (
+                    !root.sameDefinition(
+                        root.currentDefinition,
+                        queued
+                    )
+                ) {
+                    root.beginTransition(
+                        queued
+                    )
+                }
+            }
+        })
     }
 
-    Item {
-        id: viewportA
+    /*
+     * Transition reaches progress == 1.
+     *
+     * Transition.qml deliberately remains alive until we promote the
+     * incoming wallpaper.
+     */
+    function commitTransition() {
+        var incoming =
+            root.pendingSlot
 
-        width: root.width
-        height: root.height
-        x: 0
-        y: 0
-        clip: true
-        visible: true
-        opacity: 1
-        z: 1
+        var outgoing =
+            root.activeSlot
 
-        Item {
-            id: contentA
+        if (
+            !incoming ||
+            !outgoing
+        )
+            return
 
-            width: root.width
-            height: root.height
-            x: 0
-            y: 0
+        var queued =
+            root.pendingDefinition
 
-            WallpaperLayer {
-                id: layerA
-                anchors.fill: parent
-            }
-        }
-    }
+        wallpaperTimer.stop()
+        mediaPollTimer.stop()
+        componentTimer.stop()
+        transitionTimer.stop()
+        frameTimer.stop()
 
-    Item {
-        id: viewportB
+        /*
+         * IMPORTANT ORDER:
+         *
+         * 1. Incoming is promoted.
+         * 2. Outgoing is hidden.
+         * 3. Transition is completed.
+         * 4. Transition is hidden.
+         * 5. Old media is released.
+         */
+        incoming.visible = true
+        incoming.opacity = 1
+        incoming.scale = 1
+        incoming.rotation = 0
+        incoming.x = 0
+        incoming.y = 0
+        incoming.z = 200
 
-        width: root.width
-        height: root.height
-        x: 0
-        y: 0
-        clip: true
-        visible: false
-        opacity: 0
-        z: 0
+        root.activeSlot =
+            incoming
 
-        Item {
-            id: contentB
+        root.currentDefinition =
+            incoming.definition
 
-            width: root.width
-            height: root.height
-            x: 0
-            y: 0
+        outgoing.visible = false
+        outgoing.opacity = 1
+        outgoing.scale = 1
+        outgoing.rotation = 0
+        outgoing.x = 0
+        outgoing.y = 0
+        outgoing.z = 1
 
-            WallpaperLayer {
-                id: layerB
-                anchors.fill: parent
-            }
-        }
-    }
+        root.pendingSlot = null
+        root.pendingDefinition = null
 
-    Loader {
-        id: transitionLoader
+        root.progress = 1
+        root.busy = false
 
-        active: true
-        asynchronous: false
-
-        onStatusChanged: {
-            if (status === Loader.Ready) {
-                console.log(
-                    "[TransitionHost]",
-                    root.screen ? root.screen.name : "(null)",
-                    "TRANSITION LOADED:",
-                    source
-                )
-
-                root.setupTransition()
-                return
-            }
-
-            if (status === Loader.Error) {
+        /*
+         * The incoming wallpaper is now active.
+         *
+         * It is safe to make the shader disappear.
+         */
+        if (root.transition) {
+            try {
+                root.transition.complete()
+            } catch (e) {
                 console.warn(
-                    "[TransitionHost]",
-                    root.screen ? root.screen.name : "(null)",
-                    "TRANSITION LOAD FAILED:",
-                    source
+                    "[TransitionHost] transition complete error:",
+                    e
                 )
-
-                root.instantCommit()
             }
+
+            root.transition.visible = false
         }
-    }
 
-    NumberAnimation {
-        id: progressAnimation
+        /*
+         * Let the compositor/scene graph get one clean frame of the
+         * final wallpaper before destroying anything.
+         */
+        Qt.callLater(function() {
+            var finishedTransition =
+                root.transition
 
-        target: root
-        property: "transitionProgress"
+            root.transition = null
+            root.transitionComponent = null
+            root.transitionEntry = null
 
-        from: 0
-        to: 1
-
-        onFinished: {
-            root.finishTransition()
-        }
-    }
-
-    Connections {
-        target: layerA
-
-        function onReadyChanged() {
-            if (root.state !== "preparing")
-                return
-
-            if (!root.waitingForReady)
-                return
-
-            if (root.stagingLayer === layerA &&
-                layerA.ready) {
-
-                root.startPreparedTransition()
+            /*
+             * Destroy transition first.
+             */
+            if (finishedTransition) {
+                try {
+                    finishedTransition.destroy()
+                } catch (e) {
+                    console.warn(
+                        "[TransitionHost] transition destroy error:",
+                        e
+                    )
+                }
             }
-        }
-    }
 
-    Connections {
-        target: layerB
+            /*
+             * NOW release old wallpaper media.
+             *
+             * This clears:
+             *     Image.source
+             *     AnimatedImage.source
+             *     Video.source
+             *
+             * through WallpaperLayer.definition = ({})
+             */
+            root.releaseSlot(outgoing)
 
-        function onReadyChanged() {
-            if (root.state !== "preparing")
-                return
-
-            if (!root.waitingForReady)
-                return
-
-            if (root.stagingLayer === layerB &&
-                layerB.ready) {
-
-                root.startPreparedTransition()
+            /*
+             * Process the latest queued request, if any.
+             */
+            if (queued) {
+                if (
+                    !root.sameDefinition(
+                        root.currentDefinition,
+                        queued
+                    )
+                ) {
+                    root.beginTransition(
+                        queued
+                    )
+                }
             }
-        }
+        })
     }
 
-    onTransitionProgressChanged: {
-        var t = transitionLoader.item
+    function failTransition(reason) {
+        console.warn(
+            "[TransitionHost] transition failed:",
+            String(
+                reason ||
+                "unknown error"
+            )
+        )
 
-        if (root.state !== "running" || !t)
-            return
-
-        t.progress =
-            root.transitionProgress
+        if (
+            root.incomingFrameReady()
+        ) {
+            commitWithoutTransition()
+        } else {
+            cancelPendingWallpaper()
+        }
     }
 
     onDefinitionChanged: {
-        if (!root.initialized)
+        if (!root.definition)
             return
 
-        root.request(root.definition)
+        Qt.callLater(function() {
+            root.requestDefinition(
+                root.definition
+            )
+        })
     }
 
-    onWidthChanged: {
-        viewportA.width = root.width
-        viewportB.width = root.width
-        contentA.width = root.width
-        contentB.width = root.width
+    /*
+     * SLOT A
+     */
+    Item {
+        id: slotA
+
+        property var definition: ({})
+
+        property alias wallpaper:
+            wallpaperA
+
+        anchors.fill: parent
+
+        visible: false
+        z: 1
+
+        WallpaperLayer {
+            id: wallpaperA
+
+            anchors.fill: parent
+            definition:
+                slotA.definition
+        }
     }
 
-    onHeightChanged: {
-        viewportA.height = root.height
-        viewportB.height = root.height
-        contentA.height = root.height
-        contentB.height = root.height
+    /*
+     * SLOT B
+     */
+    Item {
+        id: slotB
+
+        property var definition: ({})
+
+        property alias wallpaper:
+            wallpaperB
+
+        anchors.fill: parent
+
+        visible: false
+        z: 1
+
+        WallpaperLayer {
+            id: wallpaperB
+
+            anchors.fill: parent
+            definition:
+                slotB.definition
+        }
+    }
+
+    /*
+     * Poll incoming media.
+     */
+    Timer {
+        id: mediaPollTimer
+
+        interval: 16
+        repeat: false
+
+        onTriggered: {
+            root.checkIncomingFrame()
+        }
+    }
+
+    /*
+     * One Qt event-loop turn after:
+     *
+     * - media becomes frameReady
+     * - transition object is created
+     */
+    Timer {
+        id: frameTimer
+
+        interval: 0
+        repeat: false
+
+        onTriggered: {
+            if (!root.busy)
+                return
+
+            /*
+             * Transition exists:
+             * start it after its initialization frame.
+             */
+            if (root.transition) {
+                root.startPreparedTransition()
+                return
+            }
+
+            /*
+             * Media is ready and transition component is ready.
+             */
+            if (
+                root.incomingFrameReady() &&
+                root.transitionComponent &&
+                root.transitionComponent.status ===
+                    Component.Ready
+            ) {
+                root.tryCreateTransition(
+                    root.generation
+                )
+
+                return
+            }
+
+            /*
+             * No transition configured.
+             */
+            if (
+                root.incomingFrameReady() &&
+                (
+                    !root.transitionEntry ||
+                    !TransitionManager.available ||
+                    TransitionManager.id === "none"
+                )
+            ) {
+                root.commitWithoutTransition()
+            }
+        }
+    }
+
+    /*
+     * Media safety timeout.
+     *
+     * We never expose the pending layer on timeout.
+     */
+    Timer {
+        id: wallpaperTimer
+
+        interval:
+            root.wallpaperTimeoutMs
+
+        repeat: false
+
+        onTriggered: {
+            if (!root.busy)
+                return
+
+            if (
+                root.incomingFrameReady()
+            )
+                return
+
+            console.warn(
+                "[TransitionHost] wallpaper load timeout; keeping current wallpaper"
+            )
+
+            root.cancelPendingWallpaper()
+        }
+    }
+
+    /*
+     * Transition component safety timeout.
+     */
+    Timer {
+        id: transitionTimer
+
+        interval:
+            root.transitionTimeoutMs
+
+        repeat: false
+
+        onTriggered: {
+            if (!root.busy)
+                return
+
+            console.warn(
+                "[TransitionHost] transition load timeout; using safe switch"
+            )
+
+            if (
+                root.incomingFrameReady()
+            ) {
+                root.commitWithoutTransition()
+            } else {
+                root.cancelPendingWallpaper()
+            }
+        }
+    }
+
+    /*
+     * Async transition Component watcher.
+     */
+    Timer {
+        id: componentTimer
+
+        interval: 16
+        repeat: true
+
+        onTriggered: {
+            root.checkTransitionComponent()
+        }
+    }
+
+    /*
+     * Transition lifecycle.
+     */
+    Connections {
+        target:
+            root.transition
+
+        function onFinished() {
+            root.commitTransition()
+        }
+
+        function onFailed(reason) {
+            root.failTransition(
+                reason
+            )
+        }
+
+        function onProgressChanged() {
+            if (root.transition) {
+                root.progress =
+                    root.transition.progress
+            }
+        }
     }
 
     Component.onCompleted: {
-        root.activeLayer = layerA
-        root.stagingLayer = layerB
-
-        root.activeContent = contentA
-        root.stagingContent = contentB
-
-        root.activeViewport = viewportA
-        root.stagingViewport = viewportB
-
-        root.currentDefinition =
-            root.cloneDefinition(
-                root.definition
-            )
-
-        layerA.definition =
-            root.cloneDefinition(
-                root.currentDefinition
-            )
-
-        layerA.visible = true
-        layerA.opacity = 1
-
-        layerB.visible = false
-        layerB.opacity = 0
-
-        viewportA.visible = true
-        viewportA.opacity = 1
-        viewportA.z = 1
-
-        viewportB.visible = false
-        viewportB.opacity = 0
-        viewportB.z = 0
-
-        root.initialized = true
-
         console.log(
-            "[TransitionHost]",
-            root.screen ? root.screen.name : "(null)",
-            "INITIALIZED:",
-            String(
-                root.currentDefinition?.source ||
-                "(none)"
-            )
+            "[TransitionHost] READY:",
+            root.screen
+                ? root.screen.name
+                : "(null)"
         )
+
+        if (root.definition) {
+            Qt.callLater(function() {
+                root.requestDefinition(
+                    root.definition
+                )
+            })
+        }
     }
 }

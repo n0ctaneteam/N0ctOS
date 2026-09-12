@@ -42,14 +42,14 @@
     "wallpaper": {
         "monitors": {
             "eDP-1": {
-                "source": "/home/n0ctanedev/Pictures/wallpapers/Techno-Geek.png",
-                "type": "image",
+                "source": "/home/n0ctanedev/Downloads/galaxy-eyes.1920x1080.mp4",
+                "type": "video",
                 "fitting": "crop"
             }
         },
         "transition": {
-            "id": "zoom",
-            "duration": 5000,
+            "id": "fade",
+            "duration": 500,
             "parameters": {}
         }
     },

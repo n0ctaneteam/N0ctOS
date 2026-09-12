@@ -49,14 +49,36 @@ Item {
         root.resolvedPath.toLowerCase().endsWith(".mpeg") ||
         root.resolvedPath.toLowerCase().endsWith(".ogv")
 
+    /*
+     * ready:
+     *
+     * The media has successfully initialized or completed an attempt.
+     *
+     * frameReady:
+     *
+     * The layer is safe for the transition system to use.
+     */
     property bool ready: false
+    property bool frameReady: false
+
+    /*
+     * We intentionally do NOT wait for the complete video.
+     *
+     * This is only the initial decoder warm-up.
+     */
+    property int videoWarmupMs: 250
+    property bool videoWarmupStarted: false
+
+    property bool frozen: false
 
     function imageFillMode() {
         switch (root.fitting) {
         case "stretch":
             return Image.Stretch
+
         case "contain":
             return Image.PreserveAspectFit
+
         default:
             return Image.PreserveAspectCrop
         }
@@ -66,36 +88,139 @@ Item {
         switch (root.fitting) {
         case "stretch":
             return VideoOutput.Stretch
+
         case "contain":
             return VideoOutput.PreserveAspectFit
+
         default:
             return VideoOutput.PreserveAspectCrop
         }
     }
 
-    function updateReady() {
+    function resetReadiness() {
+        root.ready = false
+        root.frameReady = false
+        root.videoWarmupStarted = false
+
+        videoWarmupTimer.stop()
+    }
+
+    function updateReadiness() {
         if (!root.source) {
             root.ready = true
+            root.frameReady = true
             return
         }
 
-        if (root.isVideo) {
+        /*
+         * IMAGE
+         */
+        if (!root.isVideo && !root.isGif) {
             root.ready =
-                wallpaperVideo.playbackState ===
-                MediaPlayer.Playing
+                wallpaperImage.status ===
+                Image.Ready
+
+            root.frameReady =
+                root.ready
+
             return
         }
 
+        /*
+         * GIF
+         */
         if (root.isGif) {
             root.ready =
                 wallpaperGif.status ===
                 AnimatedImage.Ready
+
+            root.frameReady =
+                root.ready
+
             return
         }
 
-        root.ready =
-            wallpaperImage.status ===
-            Image.Ready
+        /*
+         * VIDEO
+         *
+         * Do not require PlayingState.
+         *
+         * Some multimedia backends can successfully initialize the
+         * decoder and begin rendering before the QML playback state
+         * observed by this object changes in the way we expect.
+         */
+        if (root.isVideo) {
+            var state =
+                wallpaperVideo.playbackState
+
+            if (
+                state === MediaPlayer.Playing ||
+                state === MediaPlayer.Paused
+            ) {
+                root.ready = true
+
+                if (!root.videoWarmupStarted) {
+                    root.videoWarmupStarted = true
+                    videoWarmupTimer.restart()
+                }
+
+                return
+            }
+
+            /*
+             * Still loading. Don't claim frameReady yet.
+             */
+            root.ready = false
+            root.frameReady = false
+
+            if (!root.videoWarmupStarted) {
+                root.videoWarmupStarted = true
+                videoWarmupTimer.restart()
+            }
+        }
+    }
+
+    /*
+     * Immediately stop playback of the currently displayed video.
+     *
+     * The Video item remains visible, so its current frame stays
+     * frozen on screen while the incoming media prepares.
+     */
+    function freeze() {
+        root.frozen = true
+
+        if (
+            root.isVideo &&
+            wallpaperVideo.playbackState ===
+            MediaPlayer.Playing
+        ) {
+            try {
+                wallpaperVideo.pause()
+            } catch (e) {
+                console.warn(
+                    "[WallpaperLayer] video pause error:",
+                    e
+                )
+            }
+        }
+    }
+
+    function unfreeze() {
+        root.frozen = false
+
+        if (
+            root.isVideo &&
+            root.source
+        ) {
+            try {
+                wallpaperVideo.play()
+            } catch (e) {
+                console.warn(
+                    "[WallpaperLayer] video resume error:",
+                    e
+                )
+            }
+        }
     }
 
     Rectangle {
@@ -103,6 +228,9 @@ Item {
         color: "black"
     }
 
+    /*
+     * IMAGE
+     */
     Image {
         id: wallpaperImage
 
@@ -125,17 +253,25 @@ Item {
         cache: true
 
         onStatusChanged: {
-            root.updateReady()
+            root.updateReadiness()
 
-            if (status === Image.Error) {
+            if (
+                status === Image.Error
+            ) {
                 console.warn(
                     "[WallpaperLayer] IMAGE ERROR:",
                     root.resolvedSource
                 )
+
+                root.ready = true
+                root.frameReady = false
             }
         }
     }
 
+    /*
+     * GIF
+     */
     AnimatedImage {
         id: wallpaperGif
 
@@ -158,17 +294,26 @@ Item {
         cache: true
 
         onStatusChanged: {
-            root.updateReady()
+            root.updateReadiness()
 
-            if (status === AnimatedImage.Error) {
+            if (
+                status ===
+                AnimatedImage.Error
+            ) {
                 console.warn(
                     "[WallpaperLayer] GIF ERROR:",
                     root.resolvedSource
                 )
+
+                root.ready = true
+                root.frameReady = false
             }
         }
     }
 
+    /*
+     * VIDEO
+     */
     Video {
         id: wallpaperVideo
 
@@ -185,45 +330,141 @@ Item {
         fillMode:
             root.videoFillMode()
 
-        loops: MediaPlayer.Infinite
+        loops:
+            MediaPlayer.Infinite
+
         muted: true
         autoPlay: true
 
         onSourceChanged: {
             root.ready = false
+            root.frameReady = false
+            root.videoWarmupStarted = false
 
-            if (source)
-                play()
-            else
-                root.updateReady()
+            videoWarmupTimer.stop()
+
+            if (source) {
+                try {
+                    play()
+                } catch (e) {
+                    console.warn(
+                        "[WallpaperLayer] video play error:",
+                        e
+                    )
+                }
+
+                /*
+                 * Start the bounded first-frame warm-up immediately.
+                 */
+                root.videoWarmupStarted = true
+                videoWarmupTimer.restart()
+            }
         }
 
         onPlaybackStateChanged: {
-            root.updateReady()
+            root.updateReadiness()
         }
 
         onErrorChanged: {
-            if (error !== MediaPlayer.NoError) {
+            if (
+                error !==
+                MediaPlayer.NoError
+            ) {
                 console.warn(
                     "[WallpaperLayer] VIDEO ERROR:",
                     error,
                     errorString
                 )
+
+                /*
+                 * The media failed. It is not frameReady.
+                 */
+                root.ready = true
+                root.frameReady = false
+
+                videoWarmupTimer.stop()
             }
         }
     }
 
+    /*
+     * Bounded decoder warm-up.
+     *
+     * This does NOT wait for the whole video.
+     *
+     * Once this expires, we allow the transition system to proceed
+     * even if playbackState has not reflected Playing yet.
+     *
+     * The old wallpaper is still covering this layer at this point,
+     * so there is no visible black frame during preparation.
+     */
+    Timer {
+        id: videoWarmupTimer
+
+        interval:
+            root.videoWarmupMs
+
+        repeat: false
+
+        onTriggered: {
+            if (!root.isVideo)
+                return
+
+            /*
+             * If an actual playable state was observed, great.
+             */
+            if (
+                wallpaperVideo.playbackState ===
+                    MediaPlayer.Playing ||
+                wallpaperVideo.playbackState ===
+                    MediaPlayer.Paused
+            ) {
+                root.ready = true
+                root.frameReady = true
+                return
+            }
+
+            /*
+             * Backend hasn't exposed Playing/Paused yet.
+             *
+             * Still permit the transition after the bounded warm-up.
+             *
+             * The Video object itself is already attached to the scene
+             * and its source has been handed to the decoder.
+             */
+            root.ready = true
+            root.frameReady = true
+        }
+    }
+
+    onDefinitionChanged: {
+        root.resetReadiness()
+        root.frozen = false
+
+        Qt.callLater(
+            root.updateReadiness
+        )
+    }
+
     onSourceChanged: {
-        root.ready = false
-        Qt.callLater(root.updateReady)
+        root.resetReadiness()
+
+        Qt.callLater(
+            root.updateReadiness
+        )
     }
 
     onTypeChanged: {
-        root.ready = false
-        Qt.callLater(root.updateReady)
+        root.resetReadiness()
+
+        Qt.callLater(
+            root.updateReadiness
+        )
     }
 
     Component.onCompleted: {
-        Qt.callLater(root.updateReady)
+        Qt.callLater(
+            root.updateReadiness
+        )
     }
 }

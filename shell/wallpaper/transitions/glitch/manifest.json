@@ -1,0 +1,12 @@
+{
+    "id": "glitch",
+    "name": "Glitch",
+    "author": "N0ctOS",
+    "version": "1.0.0",
+    "type": "shader",
+    "path": "Glitch.qml",
+    "description": "Digital glitch with RGB split, slice tearing and scanlines",
+    "parameters": {
+        "intensity": 0.08
+    }
+}

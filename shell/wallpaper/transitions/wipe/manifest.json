@@ -3,12 +3,11 @@
     "name": "Wipe",
     "author": "N0ctOS",
     "version": "1.0.0",
-    "type": "qml",
-    "path": "Transition.qml",
+    "type": "shader",
+    "path": "Wipe.qml",
+    "description": "Directional wipe with soft edge (left/right/up/down)",
     "parameters": {
-        "direction": {
-            "type": "string",
-            "default": "left"
-        }
+        "direction": "left",
+        "feather": 0.02
     }
 }

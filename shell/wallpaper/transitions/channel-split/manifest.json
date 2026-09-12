@@ -1,0 +1,12 @@
+{
+    "id": "channel-split",
+    "name": "Channel Split",
+    "author": "N0ctOS",
+    "version": "1.0.0",
+    "type": "shader",
+    "path": "ChannelSplit.qml",
+    "description": "RGB channel separation with scanline distortion",
+    "parameters": {
+        "intensity": 0.018
+    }
+}
