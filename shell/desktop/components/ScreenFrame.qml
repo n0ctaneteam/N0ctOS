@@ -197,39 +197,17 @@ Scope {
         }
     }
 
-    ModuleRegistry {
-        id: moduleRegistry
-        searchPaths: [Quickshell.shellPath("desktop/modules")]
-    }
+    // Singletons (qs.desktop.lib) — ModuleRegistry, BlobManager, ServiceManager,
+    // BlobIPCHandler are now `pragma Singleton`. No local instantiation; use the
+    // singletons directly (see imports). BlobIPCHandler.blobs is wired after the
+    // 8 Blob instances are created (Component.onCompleted at EOF).
 
-    ServiceManager {
-        id: serviceManager
-        moduleRegistry: moduleRegistry
-    }
-
-    BlobManager {
-        id: blobManager
-
-        configPaths: [
-            Quickshell.shellPath("config.json"),
-            Quickshell.statePath("config.json")
-        ]
-    }
-
-    BlobIPCHandler {
-        blobManager: blobManager
-
-        blobs: ({
-            tr: trBlobContent,
-            tl: tlBlobContent,
-            tc: tcBlobContent,
-            br: brBlobContent,
-            bl: blBlobContent,
-            bc: bcBlobContent,
-            left: leftBlobContent,
-            right: rightBlobContent
-        })
-    }
+    // Backward-compat aliases — old code referenced `moduleRegistry`/`blobManager`
+    // IDs; keep read-only aliases pointing at the singletons so any external
+    // or future references keep working.
+    readonly property var moduleRegistry: ModuleRegistry
+    readonly property var blobManager: BlobManager
+    readonly property var serviceManager: ServiceManager
     
     // ============================================================
     // VALUE HELPERS
@@ -2209,8 +2187,8 @@ Scope {
             id: blBlobContent
             objectName: "bl"
             blobId: "bl"
-            moduleRegistry: moduleRegistry
-            moduleIds: blobManager.blobs.bl
+            moduleRegistry: ModuleRegistry
+            moduleIds: BlobManager.blobs.bl
             focusManager: focusManager
             visible: root.isBlBlobActive || root.blBlobProgress > 0
             opacity: root.blBlobProgress
@@ -2225,8 +2203,8 @@ Scope {
             id: brBlobContent
             objectName: "br"
             blobId: "br"
-            moduleRegistry: moduleRegistry
-            moduleIds: blobManager.blobs.br
+            moduleRegistry: ModuleRegistry
+            moduleIds: BlobManager.blobs.br
             focusManager: focusManager
             visible: root.isBrBlobActive || root.brBlobProgress > 0
             opacity: root.brBlobProgress
@@ -2241,8 +2219,8 @@ Scope {
             id: bcBlobContent
             objectName: "bc"
             blobId: "bc"
-            moduleRegistry: moduleRegistry
-            moduleIds: blobManager.blobs.bc
+            moduleRegistry: ModuleRegistry
+            moduleIds: BlobManager.blobs.bc
             focusManager: focusManager
             visible: root.isBcBlobActive || root.bcBlobProgress > 0
             opacity: root.bcBlobProgress
@@ -2257,8 +2235,8 @@ Scope {
             id: tlBlobContent
             objectName: "tl"
             blobId: "tl"
-            moduleRegistry: moduleRegistry
-            moduleIds: blobManager.blobs.tl
+            moduleRegistry: ModuleRegistry
+            moduleIds: BlobManager.blobs.tl
             focusManager: focusManager
             y: root.frameSide("top")
             x: root.frameSide("left")
@@ -2273,8 +2251,8 @@ Scope {
             id: trBlobContent
             objectName: "tr"
             blobId: "tr"
-            moduleRegistry: moduleRegistry
-            moduleIds: blobManager.blobs.tr
+            moduleRegistry: ModuleRegistry
+            moduleIds: BlobManager.blobs.tr
             focusManager: focusManager
             visible: root.isTrBlobActive || root.trBlobProgress > 0
             opacity: root.trBlobProgress
@@ -2289,8 +2267,8 @@ Scope {
             id: tcBlobContent
             objectName: "tc"
             blobId: "tc"
-            moduleRegistry: moduleRegistry
-            moduleIds: blobManager.blobs.tc
+            moduleRegistry: ModuleRegistry
+            moduleIds: BlobManager.blobs.tc
             focusManager: focusManager
             visible: root.isTcBlobActive || root.tcBlobProgress > 0
             opacity: root.tcBlobProgress
@@ -2305,8 +2283,8 @@ Scope {
             id: leftBlobContent
             objectName: "left"
             blobId: "left"
-            moduleRegistry: moduleRegistry
-            moduleIds: blobManager.blobs.left
+            moduleRegistry: ModuleRegistry
+            moduleIds: BlobManager.blobs.left
             focusManager: focusManager
             visible: root.isLeftBlobActive || root.leftBlobProgress > 0
             opacity: root.leftBlobProgress
@@ -2322,8 +2300,8 @@ Scope {
             objectName: "right"
             blobId: "right"
             isVertical: true
-            moduleRegistry: moduleRegistry
-            moduleIds: blobManager.blobs.right
+            moduleRegistry: ModuleRegistry
+            moduleIds: BlobManager.blobs.right
             focusManager: focusManager
             visible: root.isRightBlobActive || root.rightBlobProgress > 0
             opacity: root.rightBlobProgress
@@ -2373,9 +2351,24 @@ Scope {
         Component.onCompleted: {
             console.log("========== N0CTOS ==========")
             console.log("[Shell] started")
-            console.log("[Shell] module paths:", JSON.stringify(moduleRegistry.searchPaths))
-            console.log("[Shell] config paths:", JSON.stringify(blobManager.configPaths))
+            // Singleton-safe logging (aliases kept at root for compat, direct singleton preferred)
+            console.log("[Shell] module paths:", JSON.stringify(ModuleRegistry.searchPaths))
+            console.log("[Shell] config paths:", JSON.stringify(BlobManager.configPaths))
             console.log("============================")
+            // Wire IPC handler to actual Blob instances (singleton-safe).
+            // Runs per-screen; last screen wins — safe for single-monitor setups.
+            // Future multi-screen registry can extend this to per-screen map.
+            BlobIPCHandler.blobs = {
+                tr: trBlobContent,
+                tl: tlBlobContent,
+                tc: tcBlobContent,
+                br: brBlobContent,
+                bl: blBlobContent,
+                bc: bcBlobContent,
+                left: leftBlobContent,
+                right: rightBlobContent
+            }
+            console.log("[Shell] BlobIPCHandler wired:", JSON.stringify(Object.keys(BlobIPCHandler.blobs)))
         }
     }
 }

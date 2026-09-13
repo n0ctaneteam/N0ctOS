@@ -42,13 +42,13 @@
     "wallpaper": {
         "monitors": {
             "eDP-1": {
-                "source": "/home/n0ctanedev/Downloads/galaxy-eyes.1920x1080.mp4",
+                "source": "/home/n0ctanedev/Downloads/midnight-skyline.1920x1080.mp4",
                 "type": "video",
                 "fitting": "crop"
             }
         },
         "transition": {
-            "id": "fade",
+            "id": "glitch",
             "duration": 500,
             "parameters": {}
         }

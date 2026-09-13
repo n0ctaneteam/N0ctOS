@@ -1,11 +1,11 @@
+pragma Singleton
+
 import QtQuick
 import Quickshell
 import Quickshell.Io
 
-Item {
+Singleton {
     id: root
-
-    required property var moduleRegistry
 
     property string configPath: Quickshell.shellPath("config.json")
 
@@ -59,7 +59,11 @@ Item {
     }
 
     function _syncServices() {
-        if (!moduleRegistry)
+        // Singleton-safe: use global ModuleRegistry instead of injected prop
+        // (kept compatible with wallpaper/lib singleton pattern)
+        const registry = ModuleRegistry
+
+        if (!registry)
             return
 
         const selected = Object.keys(_selectedModuleIds)
@@ -68,7 +72,7 @@ Item {
             if (_services[moduleId])
                 continue
 
-            const info = moduleRegistry.get(moduleId)
+            const info = registry.get(moduleId)
 
             if (!info) {
                 console.log(
@@ -228,7 +232,7 @@ Item {
     }
 
     Connections {
-        target: root.moduleRegistry
+        target: ModuleRegistry
 
         function onRegistryChanged() {
             root._syncServices()

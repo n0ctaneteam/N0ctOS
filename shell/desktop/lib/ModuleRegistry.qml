@@ -1,11 +1,13 @@
+pragma Singleton
+
 import QtQuick
 import Quickshell
 import Quickshell.Io
 
-Item {
+Singleton {
     id: root
 
-    property list<string> searchPaths: []
+    property list<string> searchPaths: [Quickshell.shellPath("desktop/modules")]
     readonly property var registry: _registry
     readonly property int moduleCount: Object.keys(_registry).length
 

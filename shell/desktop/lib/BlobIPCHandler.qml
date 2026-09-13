@@ -1,15 +1,16 @@
+pragma Singleton
+
 import QtQuick
+import Quickshell
 import Quickshell.Io
 
-Item {
+Singleton {
     id: root
 
-    required property var blobManager
-    required property var blobs
-
-    visible: false
-    width: 0
-    height: 0
+    // Singleton-safe defaults — ScreenFrame assigns `blobs` for visual binding.
+    // `blobManager` defaults to the BlobManager singleton; assignment kept for compat.
+    property var blobManager: BlobManager
+    property var blobs: ({})
 
     IpcHandler {
         target: "n0ctos-blob"
@@ -17,9 +18,11 @@ Item {
         function activate(moduleId: string): void {
             console.log("[BlobIPC] activate:", moduleId)
 
-            const blobId = blobManager.blobOf(moduleId)
+            const mgr = root.blobManager || BlobManager
+            const blobId = mgr.blobOf(moduleId)
+            const target = root.blobs
 
-            if (!blobId || !blobs[blobId]) {
+            if (!blobId || !target[blobId]) {
                 console.warn("[BlobIPC] no blob for:", moduleId)
                 return
             }
@@ -31,15 +34,17 @@ Item {
                 moduleId
             )
 
-            blobs[blobId].openModule(moduleId)
+            target[blobId].openModule(moduleId)
         }
 
         function deactivate(moduleId: string): void {
             console.log("[BlobIPC] deactivate:", moduleId)
 
-            const blobId = blobManager.blobOf(moduleId)
+            const mgr = root.blobManager || BlobManager
+            const blobId = mgr.blobOf(moduleId)
+            const target = root.blobs
 
-            if (!blobId || !blobs[blobId]) {
+            if (!blobId || !target[blobId]) {
                 console.warn("[BlobIPC] no blob for:", moduleId)
                 return
             }
@@ -51,15 +56,17 @@ Item {
                 moduleId
             )
 
-            blobs[blobId].deactivateModule(moduleId)
+            target[blobId].deactivateModule(moduleId)
         }
 
         function toggle(moduleId: string): void {
             console.log("[BlobIPC] toggle:", moduleId)
 
-            const blobId = blobManager.blobOf(moduleId)
+            const mgr = root.blobManager || BlobManager
+            const blobId = mgr.blobOf(moduleId)
+            const target = root.blobs
 
-            if (!blobId || !blobs[blobId]) {
+            if (!blobId || !target[blobId]) {
                 console.warn("[BlobIPC] no blob for:", moduleId)
                 return
             }
@@ -71,13 +78,15 @@ Item {
                 moduleId
             )
 
-            blobs[blobId].toggleModule(moduleId)
+            target[blobId].toggleModule(moduleId)
         }
 
         function focus(blobId: string): void {
             console.log("[BlobIPC] focus:", blobId)
 
-            if (!blobs[blobId]) {
+            const target = root.blobs
+
+            if (!target[blobId]) {
                 console.warn(
                     "[BlobIPC] invalid blob:",
                     blobId
@@ -91,7 +100,7 @@ Item {
                 "focusBlob"
             )
 
-            blobs[blobId].focusBlob()
+            target[blobId].focusBlob()
         }
     }
 

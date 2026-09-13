@@ -1,11 +1,16 @@
+pragma Singleton
+
 import QtQuick
 import Quickshell
 import Quickshell.Io
 
-Item {
+Singleton {
     id: root
 
-    property list<string> configPaths: []
+    property list<string> configPaths: [
+        Quickshell.shellPath("config.json"),
+        Quickshell.statePath("config.json")
+    ]
 
     property var blobs: ({
         tr: [],

@@ -8,7 +8,7 @@ PanelWindow {
     id: root
 
     required property var screen
-    property bool isDebug: true
+    property bool isDebug: false
 
     property var definition:
         WallpaperManager.definitionFor(root.screen)

@@ -1,5 +1,6 @@
 module qs.desktop.lib
-BlobIPCHandler BlobIPCHandler.qml
-BlobManager BlobManager.qml
-ModuleRegistry ModuleRegistry.qml
-ServiceManager ServiceManager.qml
+singleton BlobIPCHandler 1.0 BlobIPCHandler.qml
+singleton BlobManager 1.0 BlobManager.qml
+singleton ModuleRegistry 1.0 ModuleRegistry.qml
+singleton ServiceManager 1.0 ServiceManager.qml
+singleton WidgetRegistry 1.0 WidgetRegistry.qml
