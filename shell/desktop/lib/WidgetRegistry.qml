@@ -4,17 +4,48 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-Singleton {
+Item {
     id: root
 
     // ============================================================
-    // PUBLIC API
+    // SEARCH PATHS
     // ============================================================
 
-    property list<string> searchPaths: [Quickshell.shellPath("desktop/widgets")]
+    /*
+     * Priority:
+     *
+     *     0 = highest priority
+     *
+     * Earlier paths win when duplicate widget IDs are found.
+     *
+     * Built-in:
+     *     /usr/share/N0ctOS/desktop/widgets
+     *
+     * System-local:
+     *     /usr/share/N0ctOS/local/widgets
+     *
+     * User:
+     *     ~/.config/N0ctOS/widgets
+     *
+     * This also makes local/user widgets capable of overriding
+     * manifests from lower-priority locations simply by placing
+     * them earlier in this list when desired.
+     */
+    property list<string> searchPaths: [
+        Quickshell.shellPath("desktop/widgets"),
+        "/usr/share/N0ctOS/local/widgets",
+        Quickshell.env("HOME") + "/.config/N0ctOS/widgets"
+    ]
 
-    readonly property var registry: _registry
-    readonly property int widgetCount: Object.keys(_registry).length
+    // ============================================================
+    // PUBLIC STATE
+    // ============================================================
+
+    readonly property var registry:
+        root._registry
+
+    readonly property int widgetCount:
+        Object.keys(root._registry).length
 
     property var _registry: ({})
     property var _jobs: []
@@ -30,13 +61,20 @@ Singleton {
         )
 
         root._jobs.forEach(function(job) {
-            if (job)
+            try {
                 job.destroy()
+            } catch (e) {
+            }
         })
 
         root._jobs = []
-        root._registry = ({ })
+        root._registry = ({})
 
+        /*
+         * Paths are processed in priority order.
+         *
+         * _registerEntry() keeps the first ID it encounters.
+         */
         for (const path of root.searchPaths) {
             if (!path)
                 continue
@@ -46,26 +84,35 @@ Singleton {
     }
 
     function get(id) {
-        return root._registry[id] || null
+        if (!id)
+            return null
+
+        return root._registry[String(id)] || null
     }
 
     function has(id) {
-        return !!root._registry[id]
+        return !!root.get(id)
     }
+
+    function ids() {
+        return Object.keys(root._registry)
+    }
+
+    // ============================================================
+    // DIRECTORY CRAWLER
+    // ============================================================
 
     function _crawl(path) {
         if (!path || !path.length)
             return
 
-        console.log(
-            "[WidgetRegistry] crawl:",
-            path
-        )
-
         const process =
-            crawlComponent.createObject(root, {
-                crawlPath: path
-            })
+            crawlComponent.createObject(
+                root,
+                {
+                    crawlPath: path
+                }
+            )
 
         if (!process) {
             console.warn(
@@ -79,6 +126,33 @@ Singleton {
         process.running = true
     }
 
+    function _crawlFinished(process, output) {
+        const path =
+            process.crawlPath
+
+        console.log(
+            "[WidgetRegistry] crawl finished:",
+            path
+        )
+
+        const manifests =
+            output.trim()
+                ? output.trim().split("\n")
+                : []
+
+        for (const manifest of manifests) {
+            const value =
+                String(manifest).trim()
+
+            if (value.length)
+                root._loadManifest(value)
+        }
+    }
+
+    // ============================================================
+    // MANIFEST READER
+    // ============================================================
+
     function _loadManifest(path) {
         console.log(
             "[WidgetRegistry] loading:",
@@ -86,10 +160,13 @@ Singleton {
         )
 
         const file =
-            manifestComponent.createObject(root, {
-                manifestPath: path,
-                path: path
-            })
+            manifestComponent.createObject(
+                root,
+                {
+                    manifestPath: path,
+                    path: path
+                }
+            )
 
         if (!file) {
             console.warn(
@@ -102,142 +179,137 @@ Singleton {
         root._jobs.push(file)
     }
 
-    // ============================================================
-    // MANIFEST
-    // ============================================================
-
     function _manifestLoaded(file) {
-        const path = file.manifestPath
+        const manifestPath =
+            file.manifestPath
 
         try {
-            const data = JSON.parse(file.text())
+            const data =
+                JSON.parse(file.text())
 
-            console.log(
-                "[WidgetRegistry] manifest:",
-                path,
-                "|",
-                JSON.stringify(data)
+            root._validateManifest(
+                manifestPath,
+                data
             )
 
-            // ----------------------------------------------------
-            // REQUIRED FIELDS
-            // ----------------------------------------------------
-
-            if (
-                !data.id ||
-                !data.name ||
-                !data.description ||
-                !data.author ||
-                !data.widget ||
-                !data.preview
-            ) {
-                throw new Error(
-                    "manifest requires " +
-                    "id, name, description, author, widget and preview"
-                )
-            }
-
-            // ----------------------------------------------------
-            // TYPE VALIDATION
-            // ----------------------------------------------------
-
-            if (typeof data.id !== "string")
-                throw new Error("manifest field 'id' must be a string")
-
-            if (typeof data.name !== "string")
-                throw new Error("manifest field 'name' must be a string")
-
-            if (typeof data.description !== "string")
-                throw new Error(
-                    "manifest field 'description' must be a string"
-                )
-
-            if (typeof data.author !== "string")
-                throw new Error(
-                    "manifest field 'author' must be a string"
-                )
-
-            if (typeof data.widget !== "string")
-                throw new Error(
-                    "manifest field 'widget' must be a string"
-                )
-
-            if (typeof data.preview !== "string")
-                throw new Error(
-                    "manifest field 'preview' must be a string"
-                )
-
-            if (
-                data.service !== undefined &&
-                data.service !== null &&
-                typeof data.service !== "string"
-            ) {
-                throw new Error(
-                    "manifest field 'service' must be a string"
-                )
-            }
-
-            if (
-                data.category !== undefined &&
-                data.category !== null &&
-                typeof data.category !== "string"
-            ) {
-                throw new Error(
-                    "manifest field 'category' must be a string"
-                )
-            }
-
-            // ----------------------------------------------------
-            // PATHS
-            // ----------------------------------------------------
-
-            const lastSlash = path.lastIndexOf("/")
-
-            if (lastSlash === -1)
-                throw new Error("invalid manifest path")
-
             const base =
-                path.substring(0, lastSlash)
+                manifestPath.substring(
+                    0,
+                    manifestPath.lastIndexOf("/")
+                )
 
             const entry = {
-                id: data.id,
-                name: data.name,
-                description: data.description,
-                author: data.author,
+                // ------------------------------------------------
+                // Identity
+                // ------------------------------------------------
+
+                id:
+                    String(data.id),
+
+                name:
+                    String(data.name),
+
+                description:
+                    String(data.description || ""),
+
+                author:
+                    String(data.author || ""),
 
                 category:
-                    data.category !== undefined
-                        ? data.category
-                        : "",
+                    String(
+                        data.category ||
+                        data.catagory ||
+                        "general"
+                    ),
 
-                widgetPath:
-                    base + "/" + data.widget,
+                icon:
+                    String(data.icon || ""),
 
                 previewPath:
-                    base + "/" + data.preview,
+                    data.preview
+                        ? base + "/" + String(data.preview)
+                        : "",
+
+                // ------------------------------------------------
+                // Main component
+                // ------------------------------------------------
+
+                widgetPath:
+                    base + "/" + String(data.widget),
+
+                // ------------------------------------------------
+                // Optional service
+                // ------------------------------------------------
 
                 servicePath:
                     data.service
-                        ? base + "/" + data.service
+                        ? base + "/" + String(data.service)
                         : "",
 
-                fullPath: base,
-                manifestPath: path
+                // ------------------------------------------------
+                // Manifest metadata
+                // ------------------------------------------------
+
+                canIntersect:
+                    data.canIntersect !== undefined
+                        ? Boolean(data.canIntersect)
+                        : false,
+
+                allowMultiple:
+                    data.allowMultiple !== undefined
+                        ? Boolean(data.allowMultiple)
+                        : false,
+
+                resizable:
+                    data.resizable !== undefined
+                        ? Boolean(data.resizable)
+                        : false,
+
+                interaction:
+                    data.interaction &&
+                    typeof data.interaction === "object"
+                        ? Object.assign(
+                            {},
+                            data.interaction
+                        )
+                        : ({
+                            click: true,
+                            rightClick: true,
+                            hover: false,
+                            focus: false,
+                            passMouseEvents: false
+                        }),
+
+                variants:
+                    Array.isArray(data.variants)
+                        ? data.variants.slice()
+                        : [],
+
+                // ------------------------------------------------
+                // Paths
+                // ------------------------------------------------
+
+                basePath:
+                    base,
+
+                manifestPath:
+                    manifestPath
             }
 
-            // ----------------------------------------------------
-            // DUPLICATES
-            //
-            // Earlier search paths have priority because the first
-            // registered entry is retained.
-            // ----------------------------------------------------
-
-            if (root._registry[data.id]) {
+            /*
+             * First registration wins.
+             *
+             * Because search paths are processed in order,
+             * earlier paths have higher priority.
+             */
+            if (root._registry[entry.id]) {
                 console.warn(
                     "[WidgetRegistry] duplicate:",
-                    data.id,
-                    "| keeping existing entry:",
-                    root._registry[data.id].manifestPath
+                    entry.id,
+                    "| keeping:",
+                    root._registry[entry.id].manifestPath,
+                    "| ignoring:",
+                    manifestPath
                 )
 
                 file.destroy()
@@ -245,32 +317,111 @@ Singleton {
             }
 
             const next =
-                Object.assign({}, root._registry)
+                Object.assign(
+                    {},
+                    root._registry
+                )
 
-            next[data.id] = entry
+            next[entry.id] =
+                entry
 
-            root._registry = next
+            root._registry =
+                next
 
             console.log(
                 "[WidgetRegistry] REGISTERED:",
-                data.id,
-                "| widget:", entry.widgetPath,
-                "| preview:", entry.previewPath,
-                "| service:",
-                entry.servicePath || "<none>",
-                "| category:",
-                entry.category || "<none>"
+                entry.id,
+                "| widget:",
+                entry.widgetPath
             )
         } catch (e) {
             console.warn(
                 "[WidgetRegistry] manifest error:",
-                path,
+                manifestPath,
                 "|",
                 e
             )
         }
 
         file.destroy()
+    }
+
+    function _validateManifest(path, data) {
+        if (!data || typeof data !== "object")
+            throw new Error(
+                "manifest is not an object"
+            )
+
+        if (!data.id)
+            throw new Error(
+                "manifest requires id"
+            )
+
+        if (!data.name)
+            throw new Error(
+                "manifest requires name"
+            )
+
+        if (!data.description)
+            throw new Error(
+                "manifest requires description"
+            )
+
+        if (!data.author)
+            throw new Error(
+                "manifest requires author"
+            )
+
+        if (!data.widget)
+            throw new Error(
+                "manifest requires widget"
+            )
+
+        if (!data.preview)
+            throw new Error(
+                "manifest requires preview"
+            )
+
+        const id =
+            String(data.id).trim()
+
+        if (!id.length)
+            throw new Error(
+                "manifest id cannot be empty"
+            )
+
+        if (
+            id.indexOf("/") !== -1 ||
+            id.indexOf("\\") !== -1
+        )
+            throw new Error(
+                "manifest id cannot contain path separators"
+            )
+
+        const widget =
+            String(data.widget).trim()
+
+        if (!widget.length)
+            throw new Error(
+                "manifest widget path cannot be empty"
+            )
+
+        /*
+         * Prevent absolute component paths from escaping the
+         * plugin directory.
+         */
+        if (
+            widget.startsWith("/") ||
+            widget.startsWith("\\")
+        )
+            throw new Error(
+                "widget path must be relative to plugin directory"
+            )
+
+        console.log(
+            "[WidgetRegistry] VALID:",
+            path
+        )
     }
 
     function _manifestFailed(file, error) {
@@ -285,7 +436,7 @@ Singleton {
     }
 
     // ============================================================
-    // CRAWLER
+    // CRAWL PROCESS
     // ============================================================
 
     Component {
@@ -313,7 +464,10 @@ Singleton {
                 id: err
             }
 
-            onExited: function(exitCode, exitStatus) {
+            onExited: function(
+                exitCode,
+                exitStatus
+            ) {
                 console.log(
                     "[WidgetRegistry] find exited:",
                     crawlPath,
@@ -330,20 +484,27 @@ Singleton {
 
                 if (out.text.trim()) {
                     const manifests =
-                        out.text.trim().split("\n")
+                        out.text
+                            .trim()
+                            .split("\n")
 
                     console.log(
                         "[WidgetRegistry] found",
                         manifests.length,
-                        "manifest(s):",
-                        JSON.stringify(manifests)
+                        "manifest(s)"
                     )
 
-                    for (const manifest of manifests) {
-                        const p = manifest.trim()
+                    for (
+                        const manifest
+                        of manifests
+                    ) {
+                        const path =
+                            manifest.trim()
 
-                        if (p.length)
-                            root._loadManifest(p)
+                        if (path.length)
+                            root._loadManifest(
+                                path
+                            )
                     }
                 } else {
                     console.log(
@@ -353,10 +514,15 @@ Singleton {
                 }
 
                 const index =
-                    root._jobs.indexOf(process)
+                    root._jobs.indexOf(
+                        process
+                    )
 
                 if (index !== -1)
-                    root._jobs.splice(index, 1)
+                    root._jobs.splice(
+                        index,
+                        1
+                    )
 
                 Qt.callLater(function() {
                     process.destroy()
@@ -366,7 +532,7 @@ Singleton {
     }
 
     // ============================================================
-    // MANIFEST READER
+    // FILE READER
     // ============================================================
 
     Component {
@@ -382,32 +548,45 @@ Singleton {
                 if (!loaded)
                     return
 
-                root._manifestLoaded(this)
+                root._manifestLoaded(
+                    this
+                )
             }
 
-            onLoadFailed: function(error) {
-                root._manifestFailed(this, error)
-            }
+            onLoadFailed:
+                function(error) {
+                    root._manifestFailed(
+                        this,
+                        error
+                    )
+                }
         }
     }
 
     // ============================================================
-    // LIFECYCLE
+    // SIGNALS / LIFECYCLE
     // ============================================================
-
-    Component.onCompleted: {
-        console.log("[WidgetRegistry] started")
-        root.discoverWidgets()
-    }
 
     onRegistryChanged: {
         console.log(
-            "[WidgetRegistry] registry changed | count:",
-            root.widgetCount,
+            "[WidgetRegistry] registry changed:",
+            Object.keys(
+                root._registry
+            ).length,
             "| ids:",
             JSON.stringify(
-                Object.keys(root._registry)
+                Object.keys(
+                    root._registry
+                )
             )
         )
+    }
+
+    Component.onCompleted: {
+        console.log(
+            "[WidgetRegistry] started"
+        )
+
+        root.discoverWidgets()
     }
 }

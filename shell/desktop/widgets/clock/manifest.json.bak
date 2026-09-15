@@ -1,0 +1,10 @@
+{
+    "id": "clock",
+    "name": "Clock",
+    "description": "A simple desktop clock.",
+    "author": "N0ctane._.Team",
+    "widget": "Clock.qml",
+    "preview": "preview.png",
+    "service": "Service.qml",
+    "category": "system"
+}

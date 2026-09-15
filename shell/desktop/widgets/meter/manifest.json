@@ -1,0 +1,9 @@
+{
+    "id": "meter",
+    "name": "System Meter",
+    "description": "Animated test meter for validating resizing and layout behavior.",
+    "author": "N0ctane._.Team",
+    "widget": "MeterWidget.qml",
+    "preview": "preview.svg",
+    "category": "system"
+}

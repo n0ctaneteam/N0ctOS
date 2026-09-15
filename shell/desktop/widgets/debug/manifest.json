@@ -1,0 +1,9 @@
+{
+    "id": "variant-test",
+    "name": "Variant Test",
+    "description": "Reference widget demonstrating internal presentation variants.",
+    "author": "N0ctane._.Team",
+    "widget": "VariantWidget.qml",
+    "preview": "preview.svg",
+    "category": "debug"
+}

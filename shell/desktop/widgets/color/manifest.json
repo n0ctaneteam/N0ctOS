@@ -1,0 +1,9 @@
+{
+    "id": "color",
+    "name": "Color Config",
+    "description": "Simple configuration-driven widget used to test persistent widget state.",
+    "author": "N0ctane._.Team",
+    "widget": "ColorWidget.qml",
+    "preview": "preview.svg",
+    "category": "debug"
+}

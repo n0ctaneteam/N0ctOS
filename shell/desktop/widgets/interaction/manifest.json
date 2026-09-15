@@ -1,0 +1,9 @@
+{
+    "id": "interaction",
+    "name": "Interaction Test",
+    "description": "Widget demonstrating click, hover, focus and intersectable behavior.",
+    "author": "N0ctane._.Team",
+    "widget": "InteractionWidget.qml",
+    "preview": "preview.svg",
+    "category": "debug"
+}

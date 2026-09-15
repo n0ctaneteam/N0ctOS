@@ -12,6 +12,14 @@ Item {
 
     anchors.fill: parent
 
+    WidgetLayer {
+        // isDebug:true
+        editMode: true
+        screen: modelData
+        WlrLayershell.layer:
+            WlrLayer.Background
+    } 
+
     ScreenFrame {
         id: frame
 

@@ -4,3 +4,4 @@ singleton BlobManager 1.0 BlobManager.qml
 singleton ModuleRegistry 1.0 ModuleRegistry.qml
 singleton ServiceManager 1.0 ServiceManager.qml
 singleton WidgetRegistry 1.0 WidgetRegistry.qml
+singleton WidgetManager 1.0 WidgetManager.qml

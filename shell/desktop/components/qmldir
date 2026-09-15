@@ -1,6 +1,9 @@
 module qs.desktop.components
 
-Blob Blob.qml
-Module Module.qml
-Service Service.qml
-ScreenFrame ScreenFrame.qml
+Blob 1.0 Blob.qml
+Module 1.0 Module.qml
+Service 1.0 Service.qml
+ScreenFrame 1.0 ScreenFrame.qml
+Widget 1.0 Widget.qml
+WidgetLayer 1.0 WidgetLayer.qml
+WidgetEditOverlay 1.0 WidgetEditOverlay.qml

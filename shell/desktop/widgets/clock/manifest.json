@@ -1,10 +1,9 @@
 {
     "id": "clock",
     "name": "Clock",
-    "description": "A simple desktop clock.",
+    "description": "Live clock widget with variant-dependent editing capabilities.",
     "author": "N0ctane._.Team",
-    "widget": "Clock.qml",
-    "preview": "preview.png",
-    "service": "Service.qml",
-    "category": "system"
+    "widget": "ClockWidget.qml",
+    "preview": "preview.svg",
+    "category": "utility"
 }
