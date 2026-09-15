@@ -1,6 +1,8 @@
 module qs.core.ui
 
-Button Button.qml
-CutBox CutBox.qml
-Slider Slider.qml
-Tabs Tabs.qml
+Button 1.0 Button.qml
+CutBox 1.0 CutBox.qml
+Slider 1.0 Slider.qml
+Tabs 1.0 Tabs.qml
+ContextMenu 1.0 ContextMenu.qml
+ContextMenuObj 1.0 ContextMenuObj.qml
