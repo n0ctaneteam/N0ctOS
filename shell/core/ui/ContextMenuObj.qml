@@ -8,49 +8,74 @@ Item {
     // PUBLIC API
     // ============================================================
 
+    /*
+     * The menu label.
+     *
+     * The icon, when wanted, is part of this same text value.
+     *
+     * Example:
+     *
+     *     text: "󰈹  Firefox"
+     *
+     * There is intentionally NO separate icon property.
+     */
     property string text: ""
-    property string icon: ""
 
     property bool enabled: true
 
     /*
-     * All non-visual actions may coexist.
+     * Executable actions.
      *
-     * functionAction + process
-     *     -> both execute
+     * Multiple actions may coexist.
      *
-     * submenu
-     *     -> visual submenu only
+     *     functionAction + process
+     *
+     * Both are executed when the object is activated.
+     *
+     * submenu is visual/navigation content and is handled separately.
      */
     property var functionAction: null
     property Process process: null
     property Component submenu: null
 
     /*
-     * Normal action:
-     *     true  -> action closes menu
-     *     false -> menu stays open
+     * Normal action items close the complete ContextMenu by default.
      *
-     * A submenu itself does not close merely because it was
-     * opened; it is handled as a visual submenu.
+     * This is ignored when the object is being used only as a
+     * submenu-opening object.
      */
     property bool closeOnClick: true
 
+    /*
+     * Arrow shown on submenu objects.
+     */
     property string submenuIcon: ""
+
+    // ============================================================
+    // VISUAL
+    // ============================================================
 
     property color normalTextColor: "#e8edf0"
     property color disabledTextColor: "#4b5963"
+
     property color hoverBackground: "#1a3039"
     property color hoverTextColor: "#2acfff"
 
     property int headerHeight: 36
     property int horizontalPadding: 10
-    property int iconWidth: 24
     property int spacing: 8
 
     property int animationDuration: 140
 
-    // Assigned automatically by ContextMenu.
+    // ============================================================
+    // CONTEXT MENU CONNECTION
+    // ============================================================
+
+    /*
+     * These are assigned automatically by ContextMenu.
+     *
+     * Callers do NOT need to set them manually.
+     */
     property var contextMenuInstance: null
     property int contextMenuDepth: 0
     property Item parentMenuObject: null
@@ -61,38 +86,67 @@ Item {
     readonly property bool hasContent:
         body.children.length > 0
 
+    /*
+     * Allow arbitrary QML children below the text row.
+     */
     default property alias contentData: body.data
 
     // ============================================================
     // SIZE
     // ============================================================
 
-    implicitWidth:
+    /*
+     * Width is based only on the natural contents.
+     *
+     * The parent ContextMenu will stretch this object to the
+     * available menu width at runtime.
+     */
+    readonly property real naturalWidth:
         Math.max(
-            header.implicitWidth,
+            header.naturalWidth,
             body.implicitWidth
         ) +
         root.horizontalPadding * 2
 
-    implicitHeight:
-        header.height +
+    readonly property real naturalHeight:
+        root.headerHeight +
         (
             root.hasContent
-                ? body.implicitHeight
+                ? root.body.implicitHeight
                 : 0
         )
 
+    implicitWidth:
+        Math.max(
+            1,
+            root.naturalWidth
+        )
+
+    implicitHeight:
+        Math.max(
+            1,
+            root.naturalHeight
+        )
+
+    width:
+        parent
+            ? parent.width
+            : root.implicitWidth
+
+    height:
+        root.naturalHeight
+
     // ============================================================
-    // ACTION
+    // ACTIONS
     // ============================================================
 
     function activate() {
         if (!root.enabled)
             return
 
-        /*
-         * Run every non-visual action that exists.
-         */
+        // --------------------------------------------------------
+        // FUNCTION
+        // --------------------------------------------------------
 
         if (root.functionAction !== null) {
             if (typeof root.functionAction === "function") {
@@ -100,23 +154,42 @@ Item {
                     root.functionAction()
                 } catch (e) {
                     console.warn(
-                        "[ContextMenuObj] function failed:",
+                        "[ContextMenuObj]",
+                        root.text,
+                        "function failed:",
                         e
                     )
                 }
+            } else {
+                console.warn(
+                    "[ContextMenuObj]",
+                    root.text,
+                    "functionAction is not a function"
+                )
             }
         }
+
+        // --------------------------------------------------------
+        // PROCESS
+        // --------------------------------------------------------
 
         if (root.process) {
             if (!root.process.running)
                 root.process.running = true
         }
 
-        /*
-         * A submenu is visual/navigation state rather than an
-         * action. Do not execute it here.
-         */
+        // --------------------------------------------------------
+        // CLOSE
+        // --------------------------------------------------------
 
+        /*
+         * Submenus are navigation.
+         *
+         * If this object has a submenu, the submenu remains open
+         * after the object is activated.
+         *
+         * Normal leaf actions use closeOnClick.
+         */
         if (
             !root.hasSubmenu &&
             root.closeOnClick &&
@@ -155,27 +228,37 @@ Item {
 
         spacing: 0
 
+        // ========================================================
+        // HEADER / CLICKABLE MENU ITEM
+        // ========================================================
+
         Item {
             id: header
 
-            width: Math.max(
-                root.width,
-                root.implicitWidth
-            )
+            width:
+                root.width > 0
+                    ? root.width
+                    : root.implicitWidth
 
-            height: root.headerHeight
+            height:
+                root.headerHeight
 
-            implicitWidth:
-                iconArea.width +
-                root.spacing +
-                textItem.implicitWidth +
-                (
-                    root.hasSubmenu
-                        ? root.spacing +
-                          submenuIndicator.width
-                        : 0
-                ) +
-                root.horizontalPadding * 2
+            readonly property real naturalWidth: {
+                let value =
+                    textItem.implicitWidth +
+                    root.horizontalPadding * 2
+
+                if (root.hasSubmenu)
+                    value +=
+                        root.spacing +
+                        submenuIndicator.implicitWidth
+
+                return value
+            }
+
+            // ----------------------------------------------------
+            // HOVER BACKGROUND
+            // ----------------------------------------------------
 
             Rectangle {
                 anchors.fill: parent
@@ -196,81 +279,53 @@ Item {
                 }
             }
 
-            Rectangle {
-                id: iconArea
-
-                x: root.horizontalPadding
-                y: (height - iconSize) / 2
-
-                width: root.iconWidth
-                height: iconSize
-
-                color: "transparent"
-
-                readonly property real iconSize:
-                    root.icon !== ""
-                        ? 17
-                        : 0
-
-                Text {
-                    anchors.centerIn: parent
-
-                    text: root.icon
-
-                    visible:
-                        root.icon !== ""
-
-                    color:
-                        root.enabled
-                            ? (
-                                headerHover.hovered
-                                    ? root.hoverTextColor
-                                    : root.normalTextColor
-                            )
-                            : root.disabledTextColor
-
-                    font.family:
-                        "Symbols Nerd Font"
-
-                    font.pixelSize:
-                        iconArea.iconSize
-
-                    Behavior on color {
-                        ColorAnimation {
-                            duration:
-                                root.animationDuration
-                        }
-                    }
-                }
-            }
+            // ----------------------------------------------------
+            // TEXT
+            // ----------------------------------------------------
 
             Text {
                 id: textItem
 
                 x:
-                    root.horizontalPadding +
-                    (
-                        root.icon !== ""
-                            ? root.iconWidth +
-                              root.spacing
-                            : 0
-                    )
+                    root.horizontalPadding
+
+                anchors.left:
+                    parent.left
 
                 anchors.verticalCenter:
                     parent.verticalCenter
 
-                text: root.text
+                anchors.right:
+                    root.hasSubmenu
+                        ? submenuIndicator.left
+                        : parent.right
+
+                anchors.rightMargin:
+                    root.hasSubmenu
+                        ? root.spacing
+                        : root.horizontalPadding
+
+                text:
+                    root.text
 
                 color:
-                    root.enabled
-                        ? (
-                            headerHover.hovered
-                                ? root.hoverTextColor
-                                : root.normalTextColor
-                        )
-                        : root.disabledTextColor
+                    !root.enabled
+                        ? root.disabledTextColor
+                        : headerHover.hovered
+                            ? root.hoverTextColor
+                            : root.normalTextColor
 
-                font.pixelSize: 12
+                font.family:
+                    "Symbols Nerd Font"
+
+                font.pixelSize:
+                    12
+
+                verticalAlignment:
+                    Text.AlignVCenter
+
+                horizontalAlignment:
+                    Text.AlignLeft
 
                 elide:
                     Text.ElideRight
@@ -282,6 +337,10 @@ Item {
                     }
                 }
             }
+
+            // ----------------------------------------------------
+            // SUBMENU ARROW
+            // ----------------------------------------------------
 
             Text {
                 id: submenuIndicator
@@ -305,19 +364,36 @@ Item {
 
                 color:
                     root.enabled
-                        ? "#657681"
+                        ? (
+                            headerHover.hovered
+                                ? root.hoverTextColor
+                                : "#657681"
+                        )
                         : root.disabledTextColor
 
                 font.family:
                     "Symbols Nerd Font"
 
-                font.pixelSize: 12
+                font.pixelSize:
+                    12
+
+                horizontalAlignment:
+                    Text.AlignRight
+
+                verticalAlignment:
+                    Text.AlignVCenter
             }
+
+            // ----------------------------------------------------
+            // HOVER
+            // ----------------------------------------------------
 
             HoverHandler {
                 id: headerHover
 
-                enabled: root.enabled
+                enabled:
+                    root.enabled
+
                 blocking: false
 
                 onHoveredChanged: {
@@ -326,34 +402,42 @@ Item {
                 }
             }
 
+            // ----------------------------------------------------
+            // CLICK
+            // ----------------------------------------------------
+
             MouseArea {
                 anchors.fill: parent
 
-                enabled: root.enabled
+                enabled:
+                    root.enabled
 
                 acceptedButtons:
                     Qt.LeftButton
 
                 onClicked: {
-                    if (root.hasSubmenu) {
-                        root.openSubmenu()
-                        return
-                    }
-
                     root.activate()
+
+                    if (root.hasSubmenu)
+                        root.openSubmenu()
                 }
             }
         }
 
+        // ========================================================
+        // CUSTOM CONTENT
+        // ========================================================
+
         Column {
             id: body
 
-            width: Math.max(
-                root.width,
-                childrenRect.width
-            )
+            width:
+                root.width > 0
+                    ? root.width
+                    : root.implicitWidth
 
-            spacing: 4
+            spacing:
+                4
 
             visible:
                 root.hasContent
@@ -367,14 +451,8 @@ Item {
     }
 
     // ============================================================
-    // RESIZE
+    // DEBUG
     // ============================================================
-
-    onWidthChanged:
-        header.width = Math.max(
-            width,
-            root.implicitWidth
-        )
 
     Component.onCompleted: {
         console.log(

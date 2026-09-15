@@ -2,25 +2,20 @@
 
 This directory contains the reusable Context Menu components used by N0ctOS.
 
-The Context Menu system is designed to provide a consistent, animated, extensible contextual UI for any N0ctOS surface.
+The Context Menu system provides animated, extensible contextual UI for any N0ctOS surface.
 
-A context menu can be used by:
+It can be used by:
 
-* Desktop
-* Widgets
-* Future file managers
-* Future applications or shell components
-* Any other component that owns a `ContextMenu` instance
+```text
+Desktop
+Widgets
+File Manager
+Settings
+Future applications
+Any custom N0ctOS component
+```
 
-The system is intentionally **not globally singleton-based**.
-
-A surface creates one `ContextMenu` instance and shares that instance with the components that belong to that surface.
-
----
-
-# 1. Architecture
-
-The Context Menu system consists of two core components:
+The system is designed around two components:
 
 ```text
 core/ui/
@@ -28,42 +23,116 @@ core/ui/
 └── ContextMenuObj.qml
 ```
 
-Their responsibilities are intentionally separate.
+`ContextMenu.qml` owns the menu itself.
 
-```text
-ContextMenu
-    │
-    ├── positioning
-    ├── animations
-    ├── content replacement
-    ├── submenu management
-    ├── cursor tracking
-    ├── screen clamping
-    └── menu lifecycle
-             │
-             ▼
-      ContextMenuObj
-             │
-             ├── text
-             ├── icon
-             ├── actions
-             ├── submenu
-             └── custom content
-```
+`ContextMenuObj.qml` defines the objects displayed inside that menu.
 
-`ContextMenu.qml` is the menu controller and visual shell.
+The system is intentionally **not globally singleton-based**.
 
-`ContextMenuObj.qml` is the reusable menu object/item that provides text, actions, submenus, and custom content.
+One surface creates one `ContextMenu` instance and shares that instance with the components belonging to that surface.
 
 ---
 
-# 2. Ownership model
+# 1. Design Philosophy
 
-A `ContextMenu` is a normal QML component.
+The Context Menu system separates:
 
-It is **not** a global application singleton.
+```text
+WHAT the menu contains
+        │
+        ▼
+ContextMenuObj
+```
 
-A UI surface creates one instance:
+from:
+
+```text
+HOW the menu is presented
+        │
+        ▼
+ContextMenu
+```
+
+Therefore:
+
+```text
+ContextMenu
+├── positioning
+├── screen clamping
+├── animation
+├── content replacement
+├── submenu management
+└── lifecycle
+
+ContextMenuObj
+├── text
+├── actions
+├── submenu
+└── custom content
+```
+
+A caller should normally only define the menu contents.
+
+The Context Menu handles presentation.
+
+---
+
+# 2. Component Structure
+
+```text
+core/ui/
+├── ContextMenu.qml
+└── ContextMenuObj.qml
+```
+
+## `ContextMenu.qml`
+
+Responsible for:
+
+```text
+menu lifecycle
+cursor tracking
+source detection
+screen detection
+positioning
+screen clamping
+opening animation
+closing animation
+content replacement
+content crossfade
+size morphing
+submenu creation
+submenu positioning
+submenu cleanup
+```
+
+## `ContextMenuObj.qml`
+
+Responsible for:
+
+```text
+menu item presentation
+text
+hover state
+click handling
+function actions
+Process actions
+submenu declarations
+custom child content
+close behavior
+```
+
+---
+
+# 3. Ownership Model
+
+`ContextMenu.qml` is a normal component.
+
+It is **not** a singleton.
+
+A surface creates one instance.
+
+Example:
 
 ```qml
 ContextMenu {
@@ -71,127 +140,110 @@ ContextMenu {
 }
 ```
 
-For Desktop:
+A Desktop may therefore have:
 
 ```text
 Desktop
-│
 ├── ContextMenu
-│
 └── WidgetLayer
     ├── Widget
     ├── Widget
     └── Widget
 ```
 
-The Desktop's widgets use the Desktop-owned Context Menu instance.
+All widgets use the Desktop-owned instance.
 
-A future file manager can independently create its own:
+A future File Manager can independently create:
 
 ```text
 FileManager
-│
 ├── ContextMenu
 └── FileView
 ```
 
-This means each surface owns its own menu state, animation state, submenu tree, and content.
+These instances do not share menu state.
 
 ---
 
-# 3. Why it is not a singleton
+# 4. Why ContextMenu Is Not a Singleton
 
-The Context Menu component is intentionally reusable across different UI surfaces.
+Different UI surfaces may need independent menu state.
 
 A global singleton would cause unrelated surfaces to share:
 
 ```text
+current menu
+current position
 open/closed state
-position
-current content
-submenus
-animation state
+submenu tree
+transition state
 ```
-
-That is undesirable.
 
 Instead:
 
 ```text
 Desktop
-    → ContextMenu instance A
+    → ContextMenu A
 
 FileManager
-    → ContextMenu instance B
-
-Another surface
-    → ContextMenu instance C
+    → ContextMenu B
 ```
 
-Each instance operates independently.
+Each surface owns its own menu.
+
+This also makes the component reusable outside Desktop.
 
 ---
 
-# 4. Basic usage
+# 5. Basic Usage
 
-A surface creates one Context Menu instance:
+Create one Context Menu:
 
 ```qml
-import "."
+ContextMenu {
+    id: contextMenu
+}
+```
 
-Item {
-    ContextMenu {
-        id: contextMenu
+Then define a menu `Component`:
+
+```qml
+Component {
+    id: menu
+
+    Column {
+        spacing: 2
+
+        ContextMenuObj {
+            text: "Open"
+        }
+
+        ContextMenuObj {
+            text: "Delete"
+        }
     }
 }
 ```
 
-A component belonging to that surface can request the menu:
+Open it:
 
 ```qml
-contextMenu.open(myMenuComponent)
+contextMenu.open(menu)
 ```
 
-The requester does not need to provide:
+The caller does not manually supply:
 
 ```text
 source object
-cursor position
+mouse coordinates
 screen
 ```
 
-The Context Menu determines these automatically.
+The Context Menu determines those automatically.
 
 ---
 
-# 5. `ContextMenu.qml`
-
-`ContextMenu.qml` is responsible for the actual menu container.
-
-Its responsibilities include:
-
-```text
-menu visibility
-menu positioning
-cursor tracking
-screen detection
-screen clamping
-content loading
-content replacement
-content crossfading
-size animation
-position animation
-submenu management
-menu closing
-```
-
-The component itself is intentionally unaware of what a particular menu contains.
-
-The caller supplies a `Component`.
-
----
-
-# 6. Opening a menu
+# 6. `ContextMenu.open()`
 
 The primary API is:
 
@@ -199,7 +251,7 @@ The primary API is:
 contextMenu.open(component)
 ```
 
-The supplied value must be a QML `Component`.
+The argument must be a QML `Component`.
 
 Example:
 
@@ -211,13 +263,11 @@ Component {
         spacing: 2
 
         ContextMenuObj {
-            text: "Open"
-            icon: "󰆍"
+            text: "󰈹  Firefox"
         }
 
         ContextMenuObj {
-            text: "Settings"
-            icon: ""
+            text: "󰆍  Terminal"
         }
     }
 }
@@ -229,243 +279,266 @@ Then:
 contextMenu.open(applicationMenu)
 ```
 
-The menu system handles everything else.
-
 ---
 
-# 7. Automatic source detection
+# 7. Automatic Source Detection
 
-The `open()` API does not receive a root object.
+The `open()` call does not accept a root object.
 
-The Context Menu determines the source automatically.
+The Context Menu automatically determines the item currently under the pointer.
 
-The current source is exposed through:
+The result is exposed through:
 
 ```qml
 contextMenu.sourceItem
 ```
 
-The current pointer position is exposed through:
+The current cursor position is exposed through:
 
 ```qml
 contextMenu.cursorPosition
 ```
 
-This allows menu content to determine which object initiated the request without requiring every caller to manually pass itself.
+This allows menu content to know which surface/component triggered the request without requiring an explicit source argument.
 
 ---
 
-# 8. Cursor tracking
+# 8. Cursor Position
 
-The Context Menu tracks the pointer position without consuming pointer input.
+The Context Menu continuously tracks the pointer without intentionally consuming it.
 
-When `open()` is called, the current cursor position becomes the requested anchor.
+When `open()` is called, the current cursor position is used as the requested anchor.
 
-The initial desired position is:
+The initial requested position is:
 
 ```text
 menu top-left = cursor position
 ```
 
-The menu then applies screen constraints.
+The position is then adjusted to remain inside the owning screen.
 
 ---
 
-# 9. Screen detection
+# 9. Screen Detection
 
-The Context Menu determines the screen containing the cursor.
+The Context Menu determines the screen associated with the current pointer position.
 
-This is especially important for multi-monitor Desktop layouts.
+This allows one Context Menu instance to operate correctly across a multi-monitor Desktop.
 
-The same Context Menu instance can therefore operate using the coordinate space of its owning surface while still selecting the correct screen bounds.
+The menu therefore does not require callers to manually choose a monitor for every request.
 
 ---
 
-# 10. Menu positioning
+# 10. Main Menu Positioning
 
-The first placement attempt is:
+The initial requested location is:
 
 ```text
 cursor
-  └── top-left corner of menu
+└── menu top-left
 ```
 
-If the menu would leave the screen, it is adjusted.
-
-The placement system prefers the normal cursor position first.
-
-If insufficient space exists, it may use the opposite direction around the cursor before finally clamping.
-
-The final menu must always remain inside the usable screen area.
+If that would place the menu outside the screen, the menu attempts a conventional flip.
 
 Conceptually:
 
 ```text
-0 <= x <= screenWidth  - menuWidth
-0 <= y <= screenHeight - menuHeight
+Normal:
+
+cursor ┌───────────────┐
+       │ menu          │
+       └───────────────┘
+
+
+Near right edge:
+
+┌───────────────┐ cursor
+│ menu          │
+└───────────────┘
 ```
+
+The final position is always clamped to the screen.
 
 ---
 
-# 11. Opening animation
+# 11. Opening Animation
 
-When the menu is closed and a new menu is requested:
+When the Context Menu is closed and `open()` is called:
 
 ```text
 closed
-  │
-  ▼
-fade in
-  │
-  ▼
+   │
+   ▼
+snap to target position
+   │
+   ├── size animation
+   └── fade animation
+   │
+   ▼
 opened
 ```
 
-The menu does not appear by abruptly snapping its opacity.
+The menu must **not slide from the previous menu position**.
+
+This distinction is intentional.
 
 ---
 
-# 12. Replacing an open menu
+# 12. Replacing an Open Menu
 
-Calling:
+When a menu is already open:
 
 ```qml
-contextMenu.open(otherComponent)
+contextMenu.open(anotherMenu)
 ```
 
-while a menu is already open does not close the entire menu and recreate it abruptly.
+does not abruptly destroy the current menu.
 
-Instead the existing menu transitions to the new request.
-
-The following can happen simultaneously:
+Instead:
 
 ```text
 old content
     │
-    ├── crossfade ──► new content
+    ├── crossfade
     │
-    ├── width morph ─► new width
-    │
-    ├── height morph → new height
-    │
-    └── position morph → new position
+    ▼
+new content
 ```
 
-This allows the context menu to smoothly travel around the screen.
+At the same time:
+
+```text
+old width  → new width
+old height → new height
+old pos    → new pos
+```
+
+all transition smoothly.
 
 ---
 
-# 13. Animation retargeting
+# 13. Animation Retargeting
 
-A new request can arrive while the previous request is still animating.
-
-The current animation should not have to finish first.
-
-Instead, animated properties are retargeted toward the latest destination.
-
-For example:
+If a new request arrives while an existing transition is still running:
 
 ```text
-Menu A
-   │
-   ├── moving toward B
-   │
-   └── new request C
-          │
-          ▼
-     smoothly retarget C
+A
+ ↓
+B requested
+ ↓
+C requested
 ```
+
+the menu does not need to finish moving to B first.
+
+It retargets directly toward C.
 
 The latest request wins.
 
 ---
 
-# 14. Content replacement
+# 14. Closing Animation
 
-When replacing menu content, the existing content remains alive temporarily so the system can crossfade between the two states.
+`close()` is animated.
 
-Conceptually:
-
-```text
-old content
-opacity 1.0
-      │
-      ▼
-crossfade
-      │
-      ▼
-new content
-opacity 1.0
+```qml
+contextMenu.close()
 ```
 
-After the transition completes, the old content is destroyed.
+causes:
 
-This avoids visual popping while the menu's dimensions are also changing.
+```text
+opened
+   │
+   ├── fade out
+   └── size collapse
+   │
+   ▼
+closed
+```
+
+The menu remains alive during the transition.
+
+After the close animation completes, the loaded menu content is released.
 
 ---
 
-# 15. Menu size
+# 15. Reopening During Close
 
-The Context Menu uses the size of its supplied content.
+A new `open()` request may arrive while the menu is fading out.
 
-The content should provide a valid:
+The menu should recover into an open state rather than waiting for the old close operation to complete.
+
+The new request becomes the active request.
+
+---
+
+# 16. Menu Size
+
+Menu size is derived from the supplied content.
+
+Content should preferably provide:
 
 ```qml
 implicitWidth
 implicitHeight
 ```
 
-or an explicit:
+or valid explicit dimensions.
 
-```qml
-width
-height
-```
+The Context Menu adds its configured internal padding.
 
-The Context Menu then incorporates its internal padding.
-
-When new content has a different size:
-
-```text
-old size
-   │
-   ▼
-smooth morph
-   │
-   ▼
-new size
-```
-
-Width and height are animated independently.
+Width and height are animated when the menu changes size.
 
 ---
 
-# 16. Context Menu padding
+# 17. CutBox Integration
 
-The Context Menu is built around `CutBox.qml`.
+The visual menu shell uses the N0ctOS `CutBox` component.
 
-The menu provides configurable minimum padding.
+This means the Context Menu follows the same geometry and styling system as the rest of the N0ctOS UI.
 
-Padding is constrained by the active CutBox corner geometry.
+The shell can use:
 
-The intended rule is:
+```text
+cut
+round
+bgColor
+borderColor
+borderWidth
+borderGlow
+```
+
+without duplicating CutBox geometry.
+
+---
+
+# 18. Context Menu Padding
+
+The menu exposes:
+
+```qml
+property real minPadding
+```
+
+The effective padding is constrained by the active corner geometry.
+
+The intended relationship is:
 
 ```qml
 Math.min(
     minPadding,
-    cutOrRound * 0.2
+    corner * 0.2
 )
 ```
 
-This prevents a large minimum padding value from becoming visually incompatible with small cut/round corners.
+This keeps the padding visually appropriate for cut/rounded corners.
 
 ---
 
-# 17. `ContextMenuObj.qml`
+# 19. `ContextMenuObj`
 
-`ContextMenuObj` is the basic reusable menu object.
-
-It is a real visual QML item and can be used directly inside a menu.
+`ContextMenuObj` is the standard visual object used inside a menu.
 
 Example:
 
@@ -475,52 +548,47 @@ ContextMenuObj {
 }
 ```
 
-Its default visual form is a clickable menu row.
+It provides:
+
+```text
+text
+enabled
+functionAction
+process
+submenu
+closeOnClick
+custom child content
+```
 
 ---
 
-# 18. Text
+# 20. Text and Icons
 
-Each `ContextMenuObj` exposes:
+There is intentionally **no separate icon property**.
 
-```qml
-property string text: ""
-```
-
-The text is rendered as the primary menu label.
+Icons are part of the `text` string.
 
 Example:
 
 ```qml
 ContextMenuObj {
-    text: "Open Terminal"
+    text: "󰈹  Firefox"
 }
 ```
 
----
+This keeps icon and label alignment under one text layout.
 
-# 19. Icons
-
-Menu objects support Nerd Font icons.
-
-Example:
+Nerd Font glyphs can therefore be used directly:
 
 ```qml
-ContextMenuObj {
-    text: "Open Terminal"
-    icon: ""
-}
+text: "󰆍  Open Terminal"
 ```
-
-The icon appears alongside the text.
-
-If no icon is supplied, the text layout remains valid without reserving unnecessary icon space.
 
 ---
 
-# 20. Enabled state
+# 21. Enabled State
 
-Menu objects can be disabled:
+A menu object can be disabled:
 
 ```qml
 ContextMenuObj {
@@ -529,46 +597,27 @@ ContextMenuObj {
 }
 ```
 
-A disabled object:
+Disabled objects:
 
 ```text
-does not activate
-does not execute actions
-does not open submenus
+do not execute actions
+do not open submenus
+do not activate
 ```
 
-and is rendered using its disabled appearance.
+and use their disabled visual state.
 
 ---
 
-# 21. Actions
+# 22. JavaScript Function Actions
 
-A `ContextMenuObj` can contain multiple action types.
-
-The supported action types are:
-
-```text
-JS function
-Quickshell Process
-submenu Component
-```
-
-The function and process actions are executable actions.
-
-A submenu is visual/navigation state rather than a second executable action.
-
----
-
-# 22. JavaScript actions
-
-A JavaScript function can be supplied directly.
+A menu object can execute a JavaScript function.
 
 Example:
 
 ```qml
 ContextMenuObj {
     text: "Refresh"
-    icon: "󰑓"
 
     functionAction: function() {
         refresh()
@@ -576,20 +625,19 @@ ContextMenuObj {
 }
 ```
 
-When the object is activated, the function runs.
+The function is executed when the object is activated.
 
 ---
 
-# 23. Process actions
+# 23. Process Actions
 
-The process action uses an actual Quickshell `Process`.
+The `process` property contains an actual Quickshell `Process`.
 
 Example:
 
 ```qml
 ContextMenuObj {
-    text: "Open Kitty"
-    icon: ""
+    text: "Open Terminal"
 
     process: Process {
         command: [
@@ -599,15 +647,15 @@ ContextMenuObj {
 }
 ```
 
-The Context Menu does not recreate process handling internally.
+The Context Menu does not replace Quickshell's process system.
 
-The caller supplies the `Process` object.
+The caller supplies the `Process`.
 
 ---
 
-# 24. Multiple actions
+# 24. Multiple Actions
 
-Multiple action types may be present on the same `ContextMenuObj`.
+A single `ContextMenuObj` may define multiple executable actions.
 
 For example:
 
@@ -630,21 +678,17 @@ ContextMenuObj {
 }
 ```
 
-The defined executable actions are both part of the same menu object.
-
-The menu item does not require different wrapper objects for different action types.
+The function and process are both valid parts of the same object.
 
 ---
 
-# 25. Action close behavior
+# 25. `closeOnClick`
 
-`ContextMenuObj` exposes:
+Normal action objects expose:
 
 ```qml
 property bool closeOnClick: true
 ```
-
-This controls whether activation closes the menu.
 
 Example:
 
@@ -655,13 +699,13 @@ ContextMenuObj {
 }
 ```
 
-The caller therefore controls whether a normal action dismisses the menu.
+If `closeOnClick` is enabled, activating the object requests closure of the owning Context Menu.
 
-Submenu navigation is handled separately.
+The close behavior is configurable per object.
 
 ---
 
-# 26. Arbitrary content
+# 26. Custom Content
 
 A `ContextMenuObj` may contain arbitrary QML children.
 
@@ -670,8 +714,7 @@ Example:
 ```qml
 ContextMenuObj {
     text: "Volume"
-    icon: ""
-
+    
     Slider {
         width: 180
         value: 50
@@ -679,72 +722,49 @@ ContextMenuObj {
 }
 ```
 
-The default text/header remains at the top-left.
-
-Custom children appear below it and are aligned to the left.
-
-This allows menu entries to contain things such as:
+The structure is:
 
 ```text
-sliders
-toggles
-labels
-progress bars
-buttons
-custom controls
-custom layouts
+┌───────────────────────────┐
+│ Volume                    │
+│                           │
+│ [ slider                 ]│
+└───────────────────────────┘
 ```
 
-The menu item does not need to know what those children are.
+The text/header stays at the top.
+
+Custom child content is placed underneath and aligned to the left.
 
 ---
 
-# 27. Child interaction
+# 27. Interactive Child Content
 
 Custom children remain normal QML objects.
 
-They may therefore receive their own mouse/keyboard interaction where appropriate.
+Controls such as:
 
-For example:
-
-```qml
-ContextMenuObj {
-    text: "Volume"
-
-    Slider {
-        activeFocusOnTab: true
-    }
-}
+```text
+Slider
+Switch
+Button
+TextField
+custom widgets
 ```
 
-The `ContextMenuObj` should not blindly capture all input that belongs to a child control.
+can therefore retain their normal input behavior.
+
+The `ContextMenuObj` should not blindly prevent child controls from receiving their own input.
 
 ---
 
 # 28. Submenus
 
-A `ContextMenuObj` may define:
-
-```qml
-property Component submenu
-```
-
-The submenu is a normal QML `Component`.
-
-It can contain:
-
-```text
-ContextMenuObj
-```
-
-or arbitrary QML content.
-
-Example:
+A `ContextMenuObj` can expose a submenu:
 
 ```qml
 ContextMenuObj {
     text: "Appearance"
-    icon: "󰔎"
 
     submenu: Component {
         Column {
@@ -762,59 +782,89 @@ ContextMenuObj {
 }
 ```
 
+The submenu is itself a QML `Component`.
+
+It can contain `ContextMenuObj` objects or arbitrary QML content.
+
 ---
 
-# 29. Submenu opening
+# 29. Submenu Indicator
 
-Submenus open immediately when their owning object is hovered.
+Objects containing a submenu display a right-side arrow.
 
-No delayed hover timer is required.
+The arrow is anchored to the **right edge of the parent menu item**.
 
 Conceptually:
 
 ```text
-hover "Appearance"
-        │
-        ▼
-open submenu immediately
+┌──────────────────────────────┐
+│ Appearance                  │
+└──────────────────────────────┘
 ```
 
-Clicking the object can also request the submenu.
+The label remains on the left.
+
+The indicator remains on the right.
 
 ---
 
-# 30. Submenu positioning
+# 30. Submenu Opening
 
-Submenus behave like cascading desktop menus.
+Hovering a submenu object opens its submenu immediately.
 
-Example:
+Clicking it can also request the submenu.
+
+The submenu remains associated with its parent menu object.
+
+---
+
+# 31. Submenu Positioning
+
+Submenus use conventional cascading-menu behavior.
+
+The preferred placement is:
 
 ```text
-┌─────────────────┐
-│ Open            │
-│ Edit         ───┼───┐
-│ Appearance    ▶ │   │
-│ Settings        │   │
-└─────────────────┘   │
-                      │
-                      └── submenu
+main menu → submenu
 ```
 
-The Context Menu finds the nearest usable side of the parent menu item.
+If there is insufficient space on the right:
 
-It prefers the right side when sufficient space is available.
+```text
+submenu ← main menu
+```
 
-If the right side does not fit, it checks the left side.
+The submenu is then clamped to the owning screen.
 
-The final submenu is still clamped to the screen.
+Conceptually:
+
+```text
+┌──────────────────┐
+│ Appearance      ├──────┐
+│ Settings         │      │
+└──────────────────┘      │
+                          │ submenu
+                          └──────
+```
+
+or, near the right edge:
+
+```text
+┌──────┐
+│      │
+│submenu├─────┐
+│      │ menu │
+└──────┘      │
+              └──────
+```
 
 ---
 
-# 31. Nested submenus
+# 32. Nested Submenus
 
-Submenus can contain `ContextMenuObj` objects which themselves define more submenus.
+Submenus can contain objects with further submenus.
 
-This allows arbitrary nesting:
+Example:
 
 ```text
 Main Menu
@@ -824,310 +874,435 @@ Main Menu
             └── Cyan
 ```
 
-Each submenu is positioned relative to its parent object.
+The Context Menu manages the entire submenu tree.
 
 ---
 
-# 32. Closing a submenu action
+# 33. Closing a Menu Tree
 
-A submenu item may be configured:
+When a leaf object has:
 
 ```qml
 closeOnClick: true
 ```
 
-When that item is activated:
+and is activated from a submenu:
 
 ```text
-clicked item
+leaf activated
       │
       ▼
-its submenu closes
+leaf submenu closes
       │
       ▼
-parent submenus close
+parent submenu closes
+      │
+      ▼
+all ancestor submenus close
       │
       ▼
 root ContextMenu closes
 ```
 
-The entire menu tree is dismissed.
+The entire context-menu tree is dismissed.
 
-It does not leave ancestor menus open.
+It must not leave ancestor submenus floating on screen.
 
 ---
 
-# 33. Context Menu closing
+# 34. Context Menu Reuse
 
-The public close API is:
+The same instance can be reused indefinitely.
 
 ```qml
+contextMenu.open(menuA)
+```
+
+then:
+
+```qml
+contextMenu.open(menuB)
+```
+
+then:
+
+```qml
+contextMenu.open(menuC)
+```
+
+There is no need to create a new `ContextMenu` for every request.
+
+---
+
+# 35. ContextMenuObj API
+
+The important public properties are:
+
+```qml
+property string text
+property bool enabled
+
+property var functionAction
+property Process process
+property Component submenu
+
+property bool closeOnClick
+property string submenuIcon
+```
+
+Visual configuration includes:
+
+```qml
+normalTextColor
+disabledTextColor
+hoverBackground
+hoverTextColor
+
+headerHeight
+horizontalPadding
+iconWidth
+spacing
+
+animationDuration
+```
+
+Context Menu integration fields are managed automatically by `ContextMenu`.
+
+---
+
+# 36. ContextMenu API
+
+Primary public functions:
+
+```qml
+contextMenu.open(component)
 contextMenu.close()
 ```
 
-Closing the root menu also removes all active submenus.
-
-The Context Menu remains instantiated and can immediately be reused later.
-
----
-
-# 34. Reusing the same ContextMenu
-
-A single instance can be reused indefinitely.
-
-For example:
+Useful exposed state:
 
 ```qml
-contextMenu.open(widgetMenu)
+contextMenu.opened
+contextMenu.sourceItem
+contextMenu.cursorPosition
+contextMenu.currentContent
 ```
 
-later:
-
-```qml
-contextMenu.open(desktopMenu)
-```
-
-later:
-
-```qml
-contextMenu.open(otherMenu)
-```
-
-Each request simply replaces the current content.
-
-There is no requirement to create and destroy a Context Menu instance for every right-click.
+Internal submenu management is handled by the Context Menu itself.
 
 ---
 
-# 35. Context menus from widgets
+# 37. What Callers Should Not Do
 
-A Desktop Widget can request the Desktop-owned Context Menu.
-
-The Widget itself does not create a second menu.
-
-Conceptually:
+A caller should not manually:
 
 ```text
-Desktop
-│
-├── ContextMenu
-│
-└── WidgetLayer
-      │
-      ├── Clock
-      ├── CPU
-      └── Weather
+calculate screen bounds
+position the menu
+animate menu movement
+fade menu content
+create submenu shells
+manage submenu lifetime
+destroy old menu content
+track cursor position
 ```
 
-A widget requests:
-
-```text
-Desktop ContextMenu
-```
-
-and provides its own menu component.
+Those responsibilities belong to `ContextMenu`.
 
 ---
 
-# 36. Context menus from the Desktop
+# 38. What ContextMenuObj Should Not Do
 
-The Desktop itself can also provide a menu.
-
-For example:
+`ContextMenuObj` should not:
 
 ```text
-Right-click empty desktop
-        │
-        ▼
-Desktop menu
-        │
-        ├── Add Widget
-        ├── Edit Widgets
-        ├── Presets
-        └── ...
+manage the entire menu tree
+position itself relative to the screen
+create the root ContextMenu
+track global cursor position
+perform screen detection
+manage sibling objects
 ```
 
-This uses the exact same Context Menu instance as widgets.
+It describes one piece of the menu.
+
+The parent Context Menu owns the overall structure.
 
 ---
 
-# 37. Context Menu ownership by future surfaces
+# 39. Interaction Model
 
-Any future surface can adopt the same architecture.
-
-Example:
+The overall relationship is:
 
 ```text
-FileManager.qml
-│
-├── ContextMenu
-│
-├── file grid
-└── sidebar
+Caller
+   │
+   │ provides Component
+   ▼
+ContextMenu
+   │
+   ├── positions menu
+   ├── animates menu
+   ├── loads content
+   └── manages submenu tree
+          │
+          ▼
+    ContextMenuObj
+          │
+          ├── text
+          ├── function
+          ├── Process
+          ├── submenu
+          └── custom QML
 ```
-
-The file manager's children reuse that instance.
-
-This makes Context Menu a reusable UI infrastructure component rather than a Desktop-specific implementation.
 
 ---
 
-# 38. CutBox integration
-
-`ContextMenu.qml` derives its visual shell from:
-
-```text
-core/ui/CutBox.qml
-```
-
-This means it inherits the same visual language as the rest of N0ctOS.
-
-The Context Menu can therefore use:
-
-```text
-cut
-round
-bgColor
-borderColor
-borderWidth
-borderGlow
-shadow
-```
-
-where appropriate.
-
-The Context Menu itself does not need to reimplement cut/round geometry.
-
----
-
-# 39. Input behavior
-
-The Context Menu's pointer tracking must not interfere with the rest of the surface.
-
-The pointer-position tracking layer is passive.
-
-Actual interaction occurs through menu content and menu objects.
-
-This is important because N0ctOS widgets can already contain nested interactive Qt Quick controls.
-
-The Context Menu should not introduce an unnecessary full-screen input blocker merely to know where the pointer is.
-
----
-
-# 40. Recommended component template
-
-A typical menu can look like:
+# 40. Example — Simple Menu
 
 ```qml
 Component {
-    id: menu
+    id: simpleMenu
 
     Column {
         spacing: 2
 
         ContextMenuObj {
-            text: "Open"
-            icon: "󰆍"
+            text: "󰈹  Open Browser"
 
-            functionAction: function() {
-                openItem()
+            process: Process {
+                command: ["firefox"]
             }
         }
 
         ContextMenuObj {
-            text: "Open With"
-            icon: "󰏖"
+            text: "󰆍  Open Terminal"
+
+            process: Process {
+                command: ["kitty"]
+            }
+        }
+
+        ContextMenuObj {
+            text: "󰑓  Refresh"
+
+            functionAction: function() {
+                refresh()
+            }
+        }
+    }
+}
+```
+
+Open it:
+
+```qml
+contextMenu.open(simpleMenu)
+```
+
+---
+
+# 41. Example — Submenu
+
+```qml
+Component {
+    id: appearanceMenu
+
+    Column {
+        spacing: 2
+
+        ContextMenuObj {
+            text: "󰔎  Appearance"
 
             submenu: Component {
                 Column {
                     spacing: 2
 
                     ContextMenuObj {
-                        text: "Kitty"
+                        text: "󰔎  Dark"
 
-                        process: Process {
-                            command: ["kitty"]
+                        functionAction: function() {
+                            setTheme("dark")
                         }
                     }
 
                     ContextMenuObj {
-                        text: "Neovim"
+                        text: "󰔎  Light"
 
                         functionAction: function() {
-                            openWithNeovim()
+                            setTheme("light")
                         }
                     }
                 }
             }
         }
+    }
+}
+```
+
+---
+
+# 42. Example — Custom Content
+
+```qml
+Component {
+    id: volumeMenu
+
+    Column {
+        spacing: 2
 
         ContextMenuObj {
-            text: "Delete"
-            icon: "󰆴"
+            text: "  Volume"
 
-            functionAction: function() {
-                deleteItem()
+            Slider {
+                width: 220
+
+                from: 0
+                to: 100
+                value: 50
             }
-
-            closeOnClick: true
         }
     }
 }
 ```
 
-Then:
+---
+
+# 43. Example — Multiple Actions
 
 ```qml
-contextMenu.open(menu)
+ContextMenuObj {
+    text: "Restart Service"
+
+    functionAction: function() {
+        console.log("Preparing restart")
+    }
+
+    process: Process {
+        command: [
+            "systemctl",
+            "--user",
+            "restart",
+            "example.service"
+        ]
+    }
+
+    closeOnClick: true
+}
 ```
 
 ---
 
-# 41. Important design rules
+# 44. Example — Desktop Integration
 
-The Context Menu system must preserve these rules.
+Desktop owns the Context Menu:
 
-### Rule 1 — one owner, one instance
+```qml
+ContextMenu {
+    id: contextMenu
+}
+```
 
-A surface owns one Context Menu instance and shares it with its descendants.
+The WidgetLayer and its widgets reuse that instance.
 
-Do not create a new Context Menu for every widget or menu request.
+The Context Menu therefore becomes shared infrastructure for:
 
-### Rule 2 — no global ContextMenu singleton
+```text
+Desktop
+WidgetLayer
+Widget
+future Desktop components
+```
 
-`ContextMenu.qml` is reusable, but each surface owns its own instance.
-
-### Rule 3 — callers provide Components
-
-Menu content belongs to the caller.
-
-The Context Menu owns presentation and lifecycle, not application-specific menu logic.
-
-### Rule 4 — source detection is automatic
-
-Callers do not pass their root object or cursor position.
-
-### Rule 5 — menu always stays on screen
-
-All main menus and submenus are clamped to their owning screen.
-
-### Rule 6 — latest request wins
-
-A new menu request can interrupt an existing transition and retarget it.
-
-### Rule 7 — old content survives only for transition
-
-Old content may remain temporarily for crossfade, then must be destroyed.
-
-### Rule 8 — submenu close propagates
-
-Closing a configured submenu item closes the complete Context Menu tree.
+without turning `ContextMenu.qml` into Desktop-specific code.
 
 ---
 
-# 42. Common mistakes
+# 45. Future Integration
 
-### Creating one menu per widget
+The same pattern can be used in another surface:
+
+```text
+FileManager
+├── ContextMenu
+├── FileList
+└── FileItem
+```
+
+A file item can request:
+
+```text
+Open
+Rename
+Delete
+Open With >
+Properties
+```
+
+using exactly the same reusable Context Menu components.
+
+Only the owner changes.
+
+The menu implementation does not.
+
+---
+
+# 46. Testing Checklist
+
+```text
+[ ] ContextMenu instantiates normally
+[ ] ContextMenu is not a singleton
+[ ] One owner can share one instance
+[ ] open(Component) works
+[ ] close() works
+[ ] sourceItem is detected
+[ ] cursorPosition is detected
+[ ] correct screen is detected
+
+[ ] closed → open snaps to new position
+[ ] closed → open fades in
+[ ] closed → open morphs size
+[ ] open → open animates position
+[ ] open → open crossfades content
+[ ] open → open morphs size
+[ ] animations can be interrupted
+[ ] close animates
+[ ] reopen during closing works
+
+[ ] ContextMenuObj renders full menu width
+[ ] text renders correctly
+[ ] Nerd Font glyphs align with text
+[ ] disabled state works
+[ ] function action works
+[ ] Process action works
+[ ] multiple actions work
+[ ] closeOnClick works
+[ ] custom children render underneath text
+[ ] custom child controls remain interactive
+
+[ ] submenu renders
+[ ] submenu arrow is on right
+[ ] submenu opens on hover
+[ ] submenu opens on click
+[ ] submenu chooses available side
+[ ] submenu stays on screen
+[ ] nested submenu works
+[ ] submenu content can be arbitrary QML
+
+[ ] closing submenu item closes its submenu
+[ ] closing submenu item closes ancestor submenus
+[ ] closing submenu item closes root ContextMenu
+
+[ ] Desktop can own a ContextMenu
+[ ] widgets can reuse Desktop's ContextMenu
+[ ] another future surface can own another ContextMenu
+```
+
+---
+
+# 47. Common Mistakes
+
+### Creating a ContextMenu per widget
 
 Do not do:
 
@@ -1139,25 +1314,23 @@ Widget {
 
 for every widget.
 
-Instead the owning surface should create one Context Menu and provide it to its widgets.
+The owning surface should provide the Context Menu instance.
 
 ---
 
 ### Making ContextMenu a singleton
 
-Do not declare:
+Do not add:
 
 ```qml
 pragma Singleton
 ```
 
-for `ContextMenu.qml`.
-
-Different surfaces must be able to own independent instances.
+The component is reusable, but its instances belong to their respective surfaces.
 
 ---
 
-### Passing the source manually
+### Passing source or cursor manually
 
 Avoid APIs such as:
 
@@ -1165,197 +1338,81 @@ Avoid APIs such as:
 contextMenu.open(component, root, mouse)
 ```
 
-The Context Menu is responsible for determining:
-
-```text
-sourceItem
-cursorPosition
-screen
-```
+The Context Menu determines those values automatically.
 
 ---
 
-### Manually implementing CutBox geometry
+### Using a separate icon property
 
-Do not duplicate CutBox's geometry implementation.
+Do not create:
+
+```qml
+icon: "󰈹"
+text: "Firefox"
+```
 
 Use:
 
 ```qml
-CutBox {
-    ...
-}
+text: "󰈹  Firefox"
 ```
 
-and configure it.
+The label and icon are intentionally one text value.
 
 ---
 
-### Destroying the whole menu for every request
+### Reimplementing submenu positioning
 
-Do not recreate the Context Menu instance every time.
-
-The intended behavior is:
-
-```text
-existing menu
-      ↓
-content replacement
-      ↓
-crossfade + size morph + movement
-```
-
----
-
-# 43. Minimal API reference
-
-## `ContextMenu`
+A menu object should declare:
 
 ```qml
-open(component)
-close()
+submenu: someComponent
 ```
 
-Properties:
-
-```qml
-opened
-sourceItem
-cursorPosition
-
-animationDuration
-
-backgroundColor
-borderColor
-borderWidth
-borderGlow
-
-cut
-round
-minPadding
-```
-
-Internal responsibilities include:
-
-```text
-submenu management
-position calculation
-screen clamping
-content transitions
-```
+and let `ContextMenu` determine where the submenu belongs.
 
 ---
 
-## `ContextMenuObj`
+# 48. Final Architecture
 
-Properties:
-
-```qml
-text
-icon
-enabled
-
-functionAction
-process
-submenu
-
-closeOnClick
-
-submenuIcon
+```text
+                         Surface
+                            │
+                            ▼
+                     ContextMenu
+                            │
+           ┌────────────────┼────────────────┐
+           │                │                │
+           ▼                ▼                ▼
+    ContextMenuObj   ContextMenuObj   ContextMenuObj
+           │                                │
+           │                                └── submenu
+           │                                      │
+           ▼                                      ▼
+      custom QML                         ContextMenuObj
+      content                                  ...
 ```
 
-Content:
+The surface owns the `ContextMenu`.
 
-```qml
-default property alias contentData
-```
+The caller defines the menu `Component`.
 
-Context Menu integration is assigned automatically when the object is loaded into a menu.
+`ContextMenu` manages presentation.
+
+`ContextMenuObj` defines individual menu content and actions.
 
 ---
 
-# 44. Testing checklist
+# 49. The Rule to Remember
 
-```text
-[ ] ContextMenu can be instantiated normally
-[ ] ContextMenu is not a singleton
-[ ] One surface can own one menu instance
-[ ] ContextMenu.open(Component) works
-[ ] sourceItem is detected automatically
-[ ] cursorPosition is captured
-[ ] correct screen is determined
-[ ] menu stays inside screen bounds
-[ ] initial opening fades in
-[ ] replacing content crossfades
-[ ] width morphs
-[ ] height morphs
-[ ] position morphs
-[ ] animations can be interrupted
-[ ] old content is eventually destroyed
+The Context Menu system should answer:
 
-[ ] ContextMenuObj renders text
-[ ] Nerd Font icon renders
-[ ] disabled object works
-[ ] JS function action works
-[ ] Process action works
-[ ] multiple actions can coexist
-[ ] closeOnClick works
-[ ] custom child content works
+> **How should contextual UI be presented, animated, positioned, and navigated?**
 
-[ ] submenu opens on hover
-[ ] submenu opens immediately
-[ ] submenu chooses available side
-[ ] submenu stays on screen
-[ ] nested submenu works
-[ ] submenu replacement works
-[ ] closing submenu item closes entire menu tree
+The caller answers:
 
-[ ] Desktop can use ContextMenu
-[ ] Widgets can reuse Desktop's ContextMenu
-[ ] Future surfaces can create independent instances
-```
+> **What should this contextual UI contain and what should its items do?**
 
----
+Keep those responsibilities separate.
 
-# 45. The rule to remember
-
-A Context Menu should answer:
-
-> **"How should contextual UI be presented and navigated?"**
-
-The component requesting the menu answers:
-
-> **"What should this contextual UI contain?"**
-
-The separation is:
-
-```text
-Caller
-    │
-    │ Component
-    ▼
-ContextMenu
-    │
-    ├── position
-    ├── screen bounds
-    ├── animation
-    ├── replacement
-    ├── submenu tree
-    └── lifecycle
-            │
-            ▼
-    ContextMenuObj
-            │
-            ├── text
-            ├── icon
-            ├── function
-            ├── Process
-            ├── submenu
-            └── custom content
-```
-
-Keep the Context Menu generic.
-
-Keep the menu contents owned by the caller.
-
-That separation is what allows the same system to work for Desktop today and completely different N0ctOS surfaces in the future.
+That is what makes the same Context Menu system suitable for Desktop today and completely different N0ctOS surfaces in the future.

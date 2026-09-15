@@ -11,20 +11,30 @@ Item {
     // ============================================================
 
     /*
-     * The ContextMenu instance is owned by a surface:
+     * One ContextMenu instance belongs to one owner/surface.
      *
-     *     Desktop -> one ContextMenu
-     *     FileManager -> one ContextMenu
+     * Example:
      *
-     * It is NOT a global application singleton.
+     *     Desktop
+     *         └── ContextMenu
+     *
+     *     Future FileManager
+     *         └── ContextMenu
+     *
+     * It is intentionally NOT a singleton.
      */
 
     property bool opened: false
 
     property int animationDuration: 180
 
+    // ------------------------------------------------------------
+    // VISUAL
+    // ------------------------------------------------------------
+
     property color backgroundColor: "#10161d"
     property color borderColor: "#26323c"
+
     property int borderWidth: 1
     property int borderGlow: 0
 
@@ -37,16 +47,17 @@ Item {
 
     property var round: ({})
 
-    /*
-     * Requested minimum padding.
-     *
-     * Actual padding is additionally constrained by the current
-     * CutBox corner geometry.
-     */
-    property real minPadding: 8
+    property real minPadding: 10
 
+    /*
+     * This is intentionally:
+     *
+     *     min(minPadding, corner * 0.2)
+     *
+     * as requested.
+     */
     readonly property real padding: {
-        let largest = 0
+        let largestCorner = 0
 
         const shapes = [
             root.cut || {},
@@ -54,32 +65,44 @@ Item {
         ]
 
         for (const shape of shapes) {
-            for (const key of [
+            for (const name of [
                 "topLeft",
                 "topRight",
                 "bottomRight",
                 "bottomLeft"
             ]) {
-                if (shape[key] !== undefined)
-                    largest = Math.max(
-                        largest,
-                        Number(shape[key]) || 0
-                    )
+                if (shape[name] !== undefined)
+                    largestCorner =
+                        Math.max(
+                            largestCorner,
+                            Number(shape[name]) || 0
+                        )
             }
         }
 
+        if (largestCorner <= 0)
+            return 0
+
         return Math.min(
             root.minPadding,
-            largest * 0.2
+            largestCorner * 0.2
         )
     }
 
-    readonly property Item sourceItem: _sourceItem
-    readonly property point cursorPosition: _cursorPosition
+    // ============================================================
+    // PUBLIC STATE
+    // ============================================================
+
+    readonly property Item sourceItem:
+        root._sourceItem
+
+    readonly property point cursorPosition:
+        root._cursorPosition
 
     readonly property Item currentContent:
-        _activeLoader && _activeLoader.item
-            ? _activeLoader.item
+        root._activeLoader &&
+        root._activeLoader.item
+            ? root._activeLoader.item
             : null
 
     // ============================================================
@@ -87,7 +110,11 @@ Item {
     // ============================================================
 
     property Item _sourceItem: null
-    property point _cursorPosition: Qt.point(0, 0)
+    property point _cursorPosition:
+        Qt.point(0, 0)
+
+    property bool _closing: false
+    property bool _opening: false
 
     property int _activeIndex: 0
     property int _pendingIndex: -1
@@ -100,6 +127,11 @@ Item {
     property real _targetY: 0
 
     property var _submenuEntries: []
+
+    readonly property bool _visible:
+        root.opened ||
+        root._opening ||
+        root._closing
 
     readonly property Item _activeLoader:
         root._activeIndex === 0
@@ -127,8 +159,13 @@ Item {
 
         root._capturePointerContext()
 
-        if (!root.opened) {
+        if (!root.opened && !root._closing) {
             root._openInitial(component)
+            return true
+        }
+
+        if (root._closing) {
+            root._reopenWhileClosing(component)
             return true
         }
 
@@ -137,20 +174,36 @@ Item {
     }
 
     function close() {
-        if (!root.opened)
+        if (
+            !root.opened &&
+            !root._opening &&
+            !root._closing
+        ) {
             return
-
-        submenuCloseTimer.stop()
+        }
 
         root._closeAllSubmenus()
 
+        /*
+         * Keep the shell visible while opacity/size animate out.
+         *
+         * This is the part the previous implementation was missing:
+         * `visible` is NOT bound directly to `opened`.
+         */
         root.opened = false
+        root._opening = false
+        root._closing = true
 
-        menuHideTimer.restart()
+        root._targetWidth = 0
+        root._targetHeight = 0
+
+        menuShell.opacity = 0
+
+        closeCleanupTimer.restart()
     }
 
     // ============================================================
-    // OPEN INITIAL
+    // INITIAL OPEN
     // ============================================================
 
     function _openInitial(component) {
@@ -159,20 +212,42 @@ Item {
         root._activeIndex = 0
         root._pendingIndex = -1
 
-        contentLoaderB.sourceComponent = null
-        contentLoaderB.opacity = 0
+        root._opening = true
+        root._closing = false
 
-        contentLoaderA.opacity = 0
-        contentLoaderA.sourceComponent = component
+        /*
+         * CRITICAL:
+         *
+         * When opening from closed state, the position is assigned
+         * DIRECTLY. No x/y animation is allowed here.
+         */
+        root._loadInitialComponent(component)
     }
 
-    function _initialLoaded(loader) {
+    function _loadInitialComponent(component) {
+        contentLoaderA.sourceComponent = null
+        contentLoaderB.sourceComponent = null
+
+        contentLoaderA.opacity = 0
+
+        contentLoaderA.sourceComponent =
+            component
+    }
+
+    function _initialContentLoaded(loader) {
         if (!loader.item)
             return
 
-        root._prepareContent(loader.item)
+        root._prepareContent(
+            loader.item,
+            0,
+            null
+        )
 
-        const size = root._componentSize(loader.item)
+        const size =
+            root._measureContent(
+                loader.item
+            )
 
         root._targetWidth =
             size.width +
@@ -189,17 +264,75 @@ Item {
                 root._targetHeight
             )
 
+        /*
+         * SNAP position.
+         *
+         * No position animation on initial opening.
+         */
         root._targetX = position.x
         root._targetY = position.y
 
-        root.opened = true
+        menuShell.x = root._targetX
+        menuShell.y = root._targetY
 
+        /*
+         * Start from zero size and zero opacity.
+         *
+         * Width/height and opacity animate in.
+         * x/y do not.
+         */
+        menuShell.width = 0
+        menuShell.height = 0
         menuShell.opacity = 0
 
+        root.opened = true
+
         Qt.callLater(function() {
+            if (!root.opened)
+                return
+
+            root._opening = false
+
+            /*
+             * `Behavior` handles width/height and opacity.
+             */
+            menuShell.width =
+                root._targetWidth
+
+            menuShell.height =
+                root._targetHeight
+
             menuShell.opacity = 1
-            contentLoaderA.opacity = 1
+
+            loader.opacity = 1
         })
+    }
+
+    // ============================================================
+    // REOPEN WHILE CLOSING
+    // ============================================================
+
+    function _reopenWhileClosing(component) {
+        closeCleanupTimer.stop()
+
+        root._closing = false
+        root._opening = true
+        root.opened = false
+
+        root._closeAllSubmenus()
+
+        root._activeIndex = 0
+        root._pendingIndex = -1
+
+        root._capturePointerContext()
+
+        contentLoaderA.sourceComponent = null
+        contentLoaderB.sourceComponent = null
+        contentLoaderA.opacity = 0
+
+        root._requestedComponent = component
+
+        contentLoaderA.sourceComponent = component
     }
 
     // ============================================================
@@ -207,18 +340,13 @@ Item {
     // ============================================================
 
     function _replace(component) {
-        if (!component)
+        if (!root.opened)
             return
 
-        /*
-         * If an earlier replacement is still transitioning,
-         * promote the incoming content to the active side first.
-         *
-         * This lets a new request interrupt an existing animation
-         * instead of waiting for it to finish.
-         */
         if (root._pendingIndex !== -1)
             root._promotePending()
+
+        root._capturePointerContext()
 
         const nextIndex =
             root._activeIndex === 0
@@ -236,10 +364,14 @@ Item {
         root._pendingIndex = nextIndex
         root._requestedComponent = component
 
-        loader.sourceComponent = component
+        loader.sourceComponent =
+            component
     }
 
-    function _replacementLoaded(index, loader) {
+    function _replacementLoaded(
+        index,
+        loader
+    ) {
         if (
             index !== root._pendingIndex ||
             !loader.item
@@ -247,9 +379,16 @@ Item {
             return
         }
 
-        root._prepareContent(loader.item)
+        root._prepareContent(
+            loader.item,
+            0,
+            null
+        )
 
-        const size = root._componentSize(loader.item)
+        const size =
+            root._measureContent(
+                loader.item
+            )
 
         root._targetWidth =
             size.width +
@@ -266,23 +405,35 @@ Item {
                 root._targetHeight
             )
 
+        /*
+         * EXISTING OPEN MENU:
+         *
+         * Position is allowed to animate.
+         */
         root._targetX = position.x
         root._targetY = position.y
 
-        loader.opacity = 1
+        /*
+         * The x/y Behavior is only enabled during replacement.
+         */
+        menuShell.animatePosition = true
 
+        loader.opacity = 1
         root._activeLoader.opacity = 0
 
-        replacementTimer.restart()
+        replacementCleanupTimer.restart()
     }
 
     function _promotePending() {
         if (root._pendingIndex === -1)
             return
 
-        const oldIndex = root._activeIndex
+        const oldIndex =
+            root._activeIndex
 
-        root._activeIndex = root._pendingIndex
+        root._activeIndex =
+            root._pendingIndex
+
         root._pendingIndex = -1
 
         const oldLoader =
@@ -298,9 +449,12 @@ Item {
         if (root._pendingIndex === -1)
             return
 
-        const oldIndex = root._activeIndex
+        const oldIndex =
+            root._activeIndex
 
-        root._activeIndex = root._pendingIndex
+        root._activeIndex =
+            root._pendingIndex
+
         root._pendingIndex = -1
 
         const oldLoader =
@@ -310,124 +464,49 @@ Item {
 
         oldLoader.opacity = 0
         oldLoader.sourceComponent = null
-    }
-
-    // ============================================================
-    // CONTENT PREPARATION
-    // ============================================================
-
-    function _prepareContent(item) {
-        if (!item)
-            return
-
-        root._bindMenuObjects(
-            item,
-            0
-        )
-    }
-
-    function _bindMenuObjects(item, depth) {
-        if (!item)
-            return
-
-        if (
-            item.hasOwnProperty("contextMenuInstance")
-        ) {
-            item.contextMenuInstance = root
-            item.contextMenuDepth = depth
-        }
-
-        for (const child of item.children)
-            root._bindMenuObjects(
-                child,
-                depth
-            )
-    }
-
-    // ============================================================
-    // SUBMENUS
-    // ============================================================
-
-    function openSubmenu(component, sourceObject, depth) {
-        if (!component || !sourceObject)
-            return
 
         /*
-         * Remove every submenu at this depth or deeper.
+         * Leave the menu in its stable state.
+         *
+         * A subsequent opening from the closed state will snap
+         * position again.
          */
-        root._closeSubmenusFrom(depth + 1)
-
-        const entry = {
-            owner: sourceObject,
-            depth: depth + 1,
-            loader: null
-        }
-
-        const loader =
-            submenuLoaderComponent.createObject(
-                cascadeLayer,
-                {
-                    menuComponent: component,
-                    menuOwner: sourceObject,
-                    menuDepth: depth + 1
-                }
-            )
-
-        if (!loader) {
-            console.warn(
-                "[ContextMenu] failed to create submenu"
-            )
-            return
-        }
-
-        entry.loader = loader
-
-        root._submenuEntries.push(entry)
-
-        loader.loaded.connect(function() {
-            root._prepareSubmenu(
-                loader,
-                entry
-            )
-        })
-
-        loader.sourceComponent = component
+        menuShell.animatePosition = false
     }
 
-    function _prepareSubmenu(loader, entry) {
-        if (!loader.item)
+    // ============================================================
+    // CONTENT
+    // ============================================================
+
+    function _prepareContent(
+        item,
+        depth,
+        parentObject
+    ) {
+        if (!item)
             return
 
-        root._bindSubmenuObjects(
-            loader.item,
-            entry.depth,
-            entry.owner
+        root._bindContextObjects(
+            item,
+            depth,
+            parentObject
         )
 
-        const size =
-            root._componentSize(
-                loader.item
+        /*
+         * Force the supplied content to use the actual menu width
+         * after the outer shell has determined it.
+         */
+        root._applyContentWidth(
+            item,
+            Math.max(
+                0,
+                root._targetWidth -
+                root.padding * 2
             )
-
-        loader.width = size.width
-        loader.height = size.height
-
-        const position =
-            root._submenuPosition(
-                entry.owner,
-                loader.width,
-                loader.height
-            )
-
-        loader.x = position.x
-        loader.y = position.y
-
-        loader.opacity = 0
-
-        submenuShowAnimation.restart()
+        )
     }
 
-    function _bindSubmenuObjects(
+    function _bindContextObjects(
         item,
         depth,
         parentObject
@@ -446,7 +525,7 @@ Item {
         }
 
         for (const child of item.children) {
-            root._bindSubmenuObjects(
+            root._bindContextObjects(
                 child,
                 depth,
                 parentObject
@@ -454,90 +533,351 @@ Item {
         }
     }
 
-    function _closeSubmenusFrom(depth) {
-        for (let i = root._submenuEntries.length - 1; i >= 0; --i) {
-            const entry =
-                root._submenuEntries[i]
+    function _applyContentWidth(
+        item,
+        width
+    ) {
+        if (!item)
+            return
 
-            if (entry.depth < depth)
+        if (
+            item.hasOwnProperty(
+                "width"
+            )
+        ) {
+            if (
+                item.hasOwnProperty(
+                    "naturalWidth"
+                )
+            ) {
+                item.width = width
+            } else if (
+                item.children &&
+                item.children.length
+            ) {
+                item.width = width
+            }
+        }
+
+        for (const child of item.children)
+            root._applyContentWidth(
+                child,
+                width
+            )
+    }
+
+    function _measureContent(item) {
+        if (!item)
+            return {
+                width: 1,
+                height: 1
+            }
+
+        let width = 0
+        let height = 0
+
+        width = Math.max(
+            width,
+            Number(
+                item.implicitWidth ||
+                item.width ||
+                0
+            )
+        )
+
+        height = Math.max(
+            height,
+            Number(
+                item.implicitHeight ||
+                item.height ||
+                0
+            )
+        )
+
+        /*
+         * ContextMenuObj exposes natural dimensions.
+         */
+        if (
+            item.hasOwnProperty(
+                "naturalWidth"
+            )
+        ) {
+            width = Math.max(
+                width,
+                Number(
+                    item.naturalWidth
+                ) || 0
+            )
+
+            height = Math.max(
+                height,
+                Number(
+                    item.naturalHeight
+                ) || 0
+            )
+        }
+
+        /*
+         * Inspect children as a fallback for arbitrary QML
+         * Components.
+         */
+        let childMaxRight = 0
+        let childMaxBottom = 0
+
+        for (const child of item.children) {
+            if (!child.visible)
                 continue
 
-            if (entry.loader)
-                entry.loader.destroy()
+            const childWidth =
+                Math.max(
+                    Number(child.width) || 0,
+                    Number(child.implicitWidth) || 0
+                )
 
-            root._submenuEntries.splice(i, 1)
+            const childHeight =
+                Math.max(
+                    Number(child.height) || 0,
+                    Number(child.implicitHeight) || 0
+                )
+
+            childMaxRight =
+                Math.max(
+                    childMaxRight,
+                    Number(child.x) +
+                    childWidth
+                )
+
+            childMaxBottom =
+                Math.max(
+                    childMaxBottom,
+                    Number(child.y) +
+                    childHeight
+                )
+        }
+
+        const rectWidth =
+            Number(
+                item.childrenRect.width
+            ) || 0
+
+        const rectHeight =
+            Number(
+                item.childrenRect.height
+            ) || 0
+
+        width = Math.max(
+            width,
+            childMaxRight,
+            rectWidth
+        )
+
+        height = Math.max(
+            height,
+            childMaxBottom,
+            rectHeight
+        )
+
+        return {
+            width: Math.max(1, width),
+            height: Math.max(1, height)
         }
     }
 
-    function _closeAllSubmenus() {
+    // ============================================================
+    // SUBMENUS
+    // ============================================================
+
+    function openSubmenu(
+        component,
+        sourceObject,
+        depth
+    ) {
+        if (
+            !component ||
+            !sourceObject
+        ) {
+            return
+        }
+
+        /*
+         * Remove every deeper branch before opening the requested
+         * submenu.
+         */
+        root._closeSubmenusFrom(
+            depth + 1
+        )
+
+        const existing =
+            root._submenuEntries.find(
+                function(entry) {
+                    return (
+                        entry.owner === sourceObject &&
+                        entry.depth === depth + 1
+                    )
+                }
+            )
+
+        if (existing)
+            return
+
+        const surface =
+            submenuSurfaceComponent.createObject(
+                cascadeLayer,
+                {
+                    menuComponent: component,
+                    menuOwner: sourceObject,
+                    menuDepth: depth + 1,
+                    contextMenuRoot: root
+                }
+            )
+
+        if (!surface) {
+            console.warn(
+                "[ContextMenu]",
+                "failed to create submenu"
+            )
+            return
+        }
+
+        root._submenuEntries.push({
+            owner: sourceObject,
+            depth: depth + 1,
+            surface: surface
+        })
+
+        surface.showMenu()
+    }
+
+    function _prepareSubmenu(
+        surface,
+        content
+    ) {
+        if (!content)
+            return
+
+        root._bindContextObjects(
+            content,
+            surface.menuDepth,
+            surface.menuOwner
+        )
+    }
+
+    function _closeSubmenusFrom(
+        depth
+    ) {
         for (
-            let i = root._submenuEntries.length - 1;
+            let i =
+                root._submenuEntries.length - 1;
             i >= 0;
             --i
         ) {
             const entry =
                 root._submenuEntries[i]
 
-            if (entry.loader)
-                entry.loader.destroy()
+            if (entry.depth < depth)
+                continue
+
+            if (entry.surface)
+                entry.surface.closeMenu()
+
+            root._submenuEntries.splice(
+                i,
+                1
+            )
+        }
+    }
+
+    function _closeAllSubmenus() {
+        for (
+            let i =
+                root._submenuEntries.length - 1;
+            i >= 0;
+            --i
+        ) {
+            const entry =
+                root._submenuEntries[i]
+
+            if (entry.surface)
+                entry.surface.closeMenu()
         }
 
         root._submenuEntries = []
     }
 
+    function _removeSubmenuSurface(surface) {
+        for (
+            let i =
+                root._submenuEntries.length - 1;
+            i >= 0;
+            --i
+        ) {
+            if (
+                root._submenuEntries[i].surface ===
+                surface
+            ) {
+                root._submenuEntries.splice(
+                    i,
+                    1
+                )
+            }
+        }
+    }
+
     // ============================================================
-    // POINTER / SOURCE DETECTION
+    // POINTER / SOURCE
     // ============================================================
 
     function _capturePointerContext() {
-        /*
-         * HoverHandler keeps the current pointer position without
-         * consuming the mouse event.
-         */
         root._cursorPosition =
-            Qt.point(
-                pointerTracker.point.position.x,
-                pointerTracker.point.position.y
-            )
+            pointerTracker.point.position
 
         root._sourceItem =
             root._findSourceItem()
     }
 
     function _findSourceItem() {
-        const contentRoot =
-            root.Window
-                ? root.Window.contentItem
-                : root.parent
+        const surface =
+            root.parent ||
+            (
+                root.Window
+                    ? root.Window.contentItem
+                    : null
+            )
 
-        if (!contentRoot)
+        if (!surface)
             return null
 
         const point =
-            contentRoot.mapFromItem(
+            surface.mapFromItem(
                 root,
                 root._cursorPosition
             )
 
+        const wasVisible =
+            root.visible
+
         /*
-         * Temporarily hide ourselves so childAt() sees the actual
-         * component under the cursor.
+         * Hide the menu itself while resolving the item beneath it.
          */
-        const oldVisible = root.visible
         root.visible = false
 
         const found =
             root._deepestItemAt(
-                contentRoot,
+                surface,
                 point
             )
 
-        root.visible = oldVisible
+        root.visible = wasVisible
 
-        return found
+        return found === surface
+            ? null
+            : found
     }
 
-    function _deepestItemAt(item, point) {
+    function _deepestItemAt(
+        item,
+        point
+    ) {
         if (!item)
             return null
 
@@ -566,54 +906,57 @@ Item {
     }
 
     // ============================================================
-    // GEOMETRY
+    // POSITIONING
     // ============================================================
 
-    function _componentSize(item) {
-        return {
-            width: Math.max(
-                1,
-                Number(
-                    item.implicitWidth ||
-                    item.width ||
-                    item.childrenRect.width ||
-                    1
-                )
-            ),
-
-            height: Math.max(
-                1,
-                Number(
-                    item.implicitHeight ||
-                    item.height ||
-                    item.childrenRect.height ||
-                    1
-                )
-            )
-        }
-    }
-
-    function _mainMenuPosition(point, width, height) {
+    function _mainMenuPosition(
+        point,
+        menuWidth,
+        menuHeight
+    ) {
         let x = point.x
         let y = point.y
 
         /*
-         * Prefer cursor -> top-left.
-         *
-         * If the menu would leave the screen, flip around the
-         * cursor in the conventional context-menu direction.
+         * First choice:
+         * top-left exactly at cursor.
          */
-        if (x + width > root.width)
-            x = point.x - width
 
-        if (y + height > root.height)
-            y = point.y - height
+        /*
+         * Horizontal flip if needed.
+         */
+        if (
+            x + menuWidth >
+            root.width
+        ) {
+            x =
+                point.x -
+                menuWidth
+        }
 
+        /*
+         * Vertical flip if needed.
+         */
+        if (
+            y + menuHeight >
+            root.height
+        ) {
+            y =
+                point.y -
+                menuHeight
+        }
+
+        /*
+         * Final hard clamp.
+         */
         x = Math.max(
             0,
             Math.min(
                 x,
-                Math.max(0, root.width - width)
+                Math.max(
+                    0,
+                    root.width - menuWidth
+                )
             )
         )
 
@@ -621,7 +964,10 @@ Item {
             0,
             Math.min(
                 y,
-                Math.max(0, root.height - height)
+                Math.max(
+                    0,
+                    root.height - menuHeight
+                )
             )
         )
 
@@ -633,7 +979,7 @@ Item {
         width,
         height
     ) {
-        const topLeft =
+        const sourceTopLeft =
             sourceObject.mapToItem(
                 root,
                 0,
@@ -641,7 +987,7 @@ Item {
             )
 
         const sourceRight =
-            topLeft.x +
+            sourceTopLeft.x +
             sourceObject.width
 
         const rightSpace =
@@ -649,33 +995,39 @@ Item {
             sourceRight
 
         const leftSpace =
-            topLeft.x
+            sourceTopLeft.x
 
         let x
 
+        /*
+         * Native-style cascading behavior:
+         *
+         * right if possible
+         * otherwise left
+         * otherwise clamp
+         */
         if (rightSpace >= width) {
             x = sourceRight
         } else if (leftSpace >= width) {
-            x = topLeft.x - width
-        } else if (rightSpace >= leftSpace) {
+            x =
+                sourceTopLeft.x -
+                width
+        } else if (
+            rightSpace >= leftSpace
+        ) {
             x = sourceRight
         } else {
-            x = topLeft.x - width
+            x =
+                sourceTopLeft.x -
+                width
         }
 
-        let y = topLeft.y
+        let y =
+            sourceTopLeft.y
 
-        x = Math.max(
-            0,
-            Math.min(
-                x,
-                Math.max(
-                    0,
-                    root.width - width
-                )
-            )
-        )
-
+        /*
+         * Clamp vertically.
+         */
         y = Math.max(
             0,
             Math.min(
@@ -687,7 +1039,24 @@ Item {
             )
         )
 
-        return Qt.point(x, y)
+        /*
+         * Clamp horizontally too.
+         */
+        x = Math.max(
+            0,
+            Math.min(
+                x,
+                Math.max(
+                    0,
+                    root.width - width
+                )
+            )
+        )
+
+        return Qt.point(
+            x,
+            y
+        )
     }
 
     // ============================================================
@@ -697,82 +1066,157 @@ Item {
     Item {
         id: menuShell
 
-        x: root._targetX
-        y: root._targetY
+        property bool animatePosition: false
 
-        width: root._targetWidth
-        height: root._targetHeight
+        x:
+            root._targetX
 
-        visible: root.opened
+        y:
+            root._targetY
+
+        width:
+            root._targetWidth
+
+        height:
+            root._targetHeight
+
+        visible:
+            root._visible
+
         opacity: 0
 
-        Behavior on x {
-            NumberAnimation {
-                duration: root.animationDuration
-                easing.type: Easing.OutCubic
-            }
-        }
-
-        Behavior on y {
-            NumberAnimation {
-                duration: root.animationDuration
-                easing.type: Easing.OutCubic
-            }
-        }
-
+        /*
+         * Width / height always animate.
+         */
         Behavior on width {
             NumberAnimation {
-                duration: root.animationDuration
-                easing.type: Easing.OutCubic
+                duration:
+                    root.animationDuration
+
+                easing.type:
+                    Easing.OutCubic
             }
         }
 
         Behavior on height {
             NumberAnimation {
-                duration: root.animationDuration
-                easing.type: Easing.OutCubic
+                duration:
+                    root.animationDuration
+
+                easing.type:
+                    Easing.OutCubic
+            }
+        }
+
+        /*
+         * Position ONLY animates while an already-open menu is
+         * being replaced.
+         *
+         * Initial opening snaps x/y directly.
+         */
+        Behavior on x {
+            enabled:
+                menuShell.animatePosition
+
+            NumberAnimation {
+                duration:
+                    root.animationDuration
+
+                easing.type:
+                    Easing.OutCubic
+            }
+        }
+
+        Behavior on y {
+            enabled:
+                menuShell.animatePosition
+
+            NumberAnimation {
+                duration:
+                    root.animationDuration
+
+                easing.type:
+                    Easing.OutCubic
             }
         }
 
         Behavior on opacity {
             NumberAnimation {
-                duration: root.animationDuration
-                easing.type: Easing.OutCubic
+                duration:
+                    root.animationDuration
+
+                easing.type:
+                    Easing.OutCubic
             }
         }
 
         CutBox {
             anchors.fill: parent
 
-            cut: root.cut
-            round: root.round
+            cut:
+                root.cut
 
-            bgColor: root.backgroundColor
-            borderColor: root.borderColor
-            borderWidth: root.borderWidth
-            borderGlow: root.borderGlow
+            round:
+                root.round
+
+            bgColor:
+                root.backgroundColor
+
+            borderColor:
+                root.borderColor
+
+            borderWidth:
+                root.borderWidth
+
+            borderGlow:
+                root.borderGlow
 
             interactive: false
+
+            // ----------------------------------------------------
+            // MAIN CONTENT
+            // ----------------------------------------------------
 
             Item {
                 id: contentArea
 
                 anchors.fill: parent
-                anchors.margins: root.padding
-                clip: false
+
+                anchors.margins:
+                    root.padding
+
+                clip: true
 
                 Loader {
                     id: contentLoaderA
 
-                    anchors.centerIn: parent
+                    anchors.fill: parent
 
-                    onLoaded:
-                        root._initialLoaded(this)
+                    asynchronous: true
+
+                    opacity: 0
+
+                    onLoaded: {
+                        if (!item)
+                            return
+
+                        if (
+                            root._pendingIndex === -1 &&
+                            root._opening
+                        ) {
+                            root._initialContentLoaded(
+                                this
+                            )
+                        }
+                    }
 
                     Behavior on opacity {
                         NumberAnimation {
-                            duration: root.animationDuration
-                            easing.type: Easing.OutCubic
+                            duration:
+                                root.animationDuration
+
+                            easing.type:
+                                Easing.OutCubic
                         }
                     }
                 }
@@ -780,20 +1224,33 @@ Item {
                 Loader {
                     id: contentLoaderB
 
-                    anchors.centerIn: parent
+                    anchors.fill: parent
+
+                    asynchronous: true
 
                     opacity: 0
 
-                    onLoaded:
-                        root._replacementLoaded(
-                            1,
-                            this
-                        )
+                    onLoaded: {
+                        if (!item)
+                            return
+
+                        if (
+                            root._pendingIndex === 1
+                        ) {
+                            root._replacementLoaded(
+                                1,
+                                this
+                            )
+                        }
+                    }
 
                     Behavior on opacity {
                         NumberAnimation {
-                            duration: root.animationDuration
-                            easing.type: Easing.OutCubic
+                            duration:
+                                root.animationDuration
+
+                            easing.type:
+                                Easing.OutCubic
                         }
                     }
                 }
@@ -802,26 +1259,16 @@ Item {
     }
 
     // ============================================================
-    // SUBMENU OVERLAY
+    // SUBMENU LAYER
     // ============================================================
 
     Item {
         id: cascadeLayer
 
         anchors.fill: parent
-        z: menuShell.z + 1
-    }
 
-    Component {
-        id: submenuLoaderComponent
-
-        Loader {
-            property Component menuComponent: null
-            property Item menuOwner: null
-            property int menuDepth: 0
-
-            asynchronous: false
-        }
+        z:
+            1000
     }
 
     // ============================================================
@@ -834,18 +1281,256 @@ Item {
         enabled: true
         blocking: false
 
-        onPointChanged: {
+        onPointChanged:
             root._cursorPosition =
                 point.position
+    }
+
+    // ============================================================
+    // SUBMENU SURFACE COMPONENT
+    // ============================================================
+
+    Component {
+        id: submenuSurfaceComponent
+
+        Item {
+            id: surface
+
+            property Component menuComponent: null
+            property Item menuOwner: null
+            property int menuDepth: 0
+            property Item contextMenuRoot: null
+
+            property bool closing: false
+            property bool shown: false
+
+            property real naturalWidth: 1
+            property real naturalHeight: 1
+
+            width:
+                naturalWidth
+
+            height:
+                naturalHeight
+
+            opacity: 0
+
+            /*
+             * The submenu is positioned only after its content has
+             * loaded and its natural size is known.
+             */
+            function showMenu() {
+                if (!surface.menuComponent)
+                    return
+
+                submenuLoader.sourceComponent =
+                    surface.menuComponent
+            }
+
+            function prepareContent(item) {
+                if (!item)
+                    return
+
+                root._prepareSubmenu(
+                    surface,
+                    item
+                )
+
+                const size =
+                    root._measureContent(
+                        item
+                    )
+
+                surface.naturalWidth =
+                    Math.max(
+                        1,
+                        size.width +
+                        root.padding * 2
+                    )
+
+                surface.naturalHeight =
+                    Math.max(
+                        1,
+                        size.height +
+                        root.padding * 2
+                    )
+
+                /*
+                 * Content receives the actual menu width.
+                 */
+                root._applyContentWidth(
+                    item,
+                    Math.max(
+                        0,
+                        surface.naturalWidth -
+                        root.padding * 2
+                    )
+                )
+
+                const position =
+                    root._submenuPosition(
+                        surface.menuOwner,
+                        surface.width,
+                        surface.height
+                    )
+
+                surface.x =
+                    position.x
+
+                surface.y =
+                    position.y
+
+                surface.closing = false
+                surface.shown = true
+
+                surface.opacity = 0
+
+                Qt.callLater(function() {
+                    if (!surface.shown)
+                        return
+
+                    surface.opacity = 1
+                })
+            }
+
+            function closeMenu() {
+                if (surface.closing)
+                    return
+
+                surface.closing = true
+                surface.shown = false
+
+                surface.opacity = 0
+
+                destroyTimer.restart()
+            }
+
+            CutBox {
+                anchors.fill: parent
+
+                cut:
+                    root.cut
+
+                round:
+                    root.round
+
+                bgColor:
+                    root.backgroundColor
+
+                borderColor:
+                    root.borderColor
+
+                borderWidth:
+                    root.borderWidth
+
+                borderGlow:
+                    root.borderGlow
+
+                interactive: false
+
+                Item {
+                    anchors.fill: parent
+
+                    anchors.margins:
+                        root.padding
+
+                    clip: true
+
+                    Loader {
+                        id: submenuLoader
+
+                        anchors.fill:
+                            parent
+
+                        asynchronous: true
+
+                        onLoaded: {
+                            if (!item)
+                                return
+
+                            surface.prepareContent(
+                                item
+                            )
+                        }
+                    }
+                }
+            }
+
+            Timer {
+                id: destroyTimer
+
+                interval:
+                    root.animationDuration
+
+                repeat: false
+
+                onTriggered: {
+                    root._removeSubmenuSurface(
+                        surface
+                    )
+
+                    surface.destroy()
+                }
+            }
+
+            Behavior on x {
+                NumberAnimation {
+                    duration:
+                        root.animationDuration
+
+                    easing.type:
+                        Easing.OutCubic
+                }
+            }
+
+            Behavior on y {
+                NumberAnimation {
+                    duration:
+                        root.animationDuration
+
+                    easing.type:
+                        Easing.OutCubic
+                }
+            }
+
+            Behavior on width {
+                NumberAnimation {
+                    duration:
+                        root.animationDuration
+
+                    easing.type:
+                        Easing.OutCubic
+                }
+            }
+
+            Behavior on height {
+                NumberAnimation {
+                    duration:
+                        root.animationDuration
+
+                    easing.type:
+                        Easing.OutCubic
+                }
+            }
+
+            Behavior on opacity {
+                NumberAnimation {
+                    duration:
+                        root.animationDuration
+
+                    easing.type:
+                        Easing.OutCubic
+                }
+            }
         }
     }
 
     // ============================================================
-    // ANIMATION TIMERS
+    // CLEANUP TIMERS
     // ============================================================
 
     Timer {
-        id: replacementTimer
+        id: replacementCleanupTimer
 
         interval:
             root.animationDuration
@@ -857,7 +1542,7 @@ Item {
     }
 
     Timer {
-        id: menuHideTimer
+        id: closeCleanupTimer
 
         interval:
             root.animationDuration
@@ -865,47 +1550,28 @@ Item {
         repeat: false
 
         onTriggered: {
+            contentLoaderA.sourceComponent = null
+            contentLoaderB.sourceComponent = null
+
+            contentLoaderA.opacity = 0
+            contentLoaderB.opacity = 0
+
+            root._requestedComponent = null
+
+            root.opened = false
+            root._opening = false
+            root._closing = false
+
+            root._targetWidth = 0
+            root._targetHeight = 0
+
             menuShell.opacity = 0
-
-            if (!root.opened) {
-                contentLoaderA.sourceComponent = null
-                contentLoaderB.sourceComponent = null
-            }
         }
     }
 
-    Timer {
-        id: submenuCloseTimer
-        interval: 0
-        repeat: false
-    }
-
-    SequentialAnimation {
-        id: submenuShowAnimation
-
-        NumberAnimation {
-            target: {
-                const entries =
-                    root._submenuEntries
-
-                if (!entries.length)
-                    return null
-
-                const last =
-                    entries[entries.length - 1]
-
-                return last.loader
-            }
-
-            property: "opacity"
-
-            from: 0
-            to: 1
-
-            duration: root.animationDuration
-            easing.type: Easing.OutCubic
-        }
-    }
+    // ============================================================
+    // DEBUG
+    // ============================================================
 
     Component.onCompleted: {
         console.log(
