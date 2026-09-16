@@ -9,6 +9,7 @@ import qs.desktop.lib
 Scope {
     id: root
     property var frameLayer: WlrLayer.Bottom
+    property var screen
     // ============================================================
     // PUBLIC API
     // ============================================================
@@ -1489,6 +1490,7 @@ Scope {
 
     
     PanelWindow {
+      screen: root.screen
         id: topReservation
 
         anchors {
@@ -1512,6 +1514,7 @@ Scope {
             WlrKeyboardFocus.None
     }
     PanelWindow {
+      screen: root.screen
         id: bottomReservation
 
         anchors {
@@ -1535,6 +1538,7 @@ Scope {
             WlrKeyboardFocus.None
     }
     PanelWindow {
+      screen: root.screen
         id: leftReservation
 
         anchors {
@@ -1558,6 +1562,7 @@ Scope {
             WlrKeyboardFocus.None
     }
     PanelWindow {
+      screen: root.screen
         id: rightReservation
 
         anchors {
@@ -1585,6 +1590,7 @@ Scope {
     // FRAME WINDOW
     // ============================================================
     PanelWindow {
+    screen: root.screen
         id: frameWindow
 
         anchors {

@@ -1,53 +1,43 @@
 import QtQuick
 import Quickshell.Io
 
-Item {
+import qs.core.ui
+
+CutBox {
     id: root
 
     // ============================================================
     // PUBLIC API
     // ============================================================
 
-    /*
-     * The menu label.
-     *
-     * The icon, when wanted, is part of this same text value.
-     *
-     * Example:
-     *
-     *     text: "󰈹  Firefox"
-     *
-     * There is intentionally NO separate icon property.
-     */
     property string text: ""
 
     property bool enabled: true
 
     /*
-     * Executable actions.
+     * Optional executable actions.
      *
-     * Multiple actions may coexist.
+     * More than one may be supplied.
      *
      *     functionAction + process
      *
-     * Both are executed when the object is activated.
-     *
-     * submenu is visual/navigation content and is handled separately.
+     * are both executed.
      */
     property var functionAction: null
     property Process process: null
+
+    /*
+     * A Component containing the submenu.
+     */
     property Component submenu: null
 
     /*
-     * Normal action items close the complete ContextMenu by default.
-     *
-     * This is ignored when the object is being used only as a
-     * submenu-opening object.
+     * Leaf actions close the complete ContextMenu by default.
      */
     property bool closeOnClick: true
 
     /*
-     * Arrow shown on submenu objects.
+     * Nerd Font submenu arrow.
      */
     property string submenuIcon: ""
 
@@ -55,92 +45,128 @@ Item {
     // VISUAL
     // ============================================================
 
-    property color normalTextColor: "#e8edf0"
-    property color disabledTextColor: "#4b5963"
+    property color normalTextColor:
+        "#e8edf0"
 
-    property color hoverBackground: "#1a3039"
-    property color hoverTextColor: "#2acfff"
+    property color disabledTextColor:
+        "#4b5963"
 
-    property int headerHeight: 36
+    property color hoverBackground:
+        "#1a3039"
+
+    property color hoverTextColor:
+        "#2acfff"
+
+    property color arrowColor:
+        "#657681"
+
+    property color arrowHoverColor:
+        "#2acfff"
+
+    property int rowHeight: 34
+
     property int horizontalPadding: 10
-    property int spacing: 8
 
-    property int animationDuration: 140
+    property int textArrowSpacing: 8
+
+    property int menuAnimationDuration: 140
 
     // ============================================================
     // CONTEXT MENU CONNECTION
     // ============================================================
 
     /*
-     * These are assigned automatically by ContextMenu.
-     *
-     * Callers do NOT need to set them manually.
+     * ContextMenu injects these automatically.
      */
     property var contextMenuInstance: null
+
     property int contextMenuDepth: 0
+
     property Item parentMenuObject: null
 
     readonly property bool hasSubmenu:
         root.submenu !== null
 
-    readonly property bool hasContent:
-        body.children.length > 0
-
-    /*
-     * Allow arbitrary QML children below the text row.
-     */
-    default property alias contentData: body.data
-
     // ============================================================
-    // SIZE
+    // CUTBOX
     // ============================================================
 
     /*
-     * Width is based only on the natural contents.
+     * ContextMenuObj is itself a CutBox.
      *
-     * The parent ContextMenu will stretch this object to the
-     * available menu width at runtime.
+     * The surface handles:
+     *
+     *     hovered
+     *     exited
+     *     clicked
+     *     pressed
+     *     released
+     *
+     * through the reusable CutBox interaction layer.
      */
-    readonly property real naturalWidth:
-        Math.max(
-            header.naturalWidth,
-            body.implicitWidth
-        ) +
-        root.horizontalPadding * 2
+    interactive:
+        root.enabled
 
-    readonly property real naturalHeight:
-        root.headerHeight +
-        (
-            root.hasContent
-                ? root.body.implicitHeight
-                : 0
-        )
+    bgColor:
+        root.enabled && root.hoveredState
+            ? root.hoverBackground
+            : "transparent"
 
-    implicitWidth:
-        Math.max(
-            1,
-            root.naturalWidth
-        )
+    borderWidth:
+        0
 
-    implicitHeight:
-        Math.max(
-            1,
-            root.naturalHeight
-        )
+    cut: ({
+        })
 
-    width:
-        parent
-            ? parent.width
-            : root.implicitWidth
-
-    height:
-        root.naturalHeight
+    round: ({
+        })
 
     // ============================================================
-    // ACTIONS
+    // HOVER STATE
     // ============================================================
 
-    function activate() {
+    /*
+     * CutBox's signal is `hovered()`.
+     *
+     * Keep a separate state property because the ContextMenu needs
+     * a persistent boolean to know whether this particular object
+     * is currently under the pointer.
+     */
+    property bool hoveredState: false
+
+    onHovered: {
+        root.hoveredState = true
+
+        if (
+            root.contextMenuInstance &&
+            root.hasSubmenu
+        ) {
+            root.contextMenuInstance.objectHovered(
+                root,
+                root.contextMenuDepth
+            )
+        }
+    }
+
+    onExited: {
+        root.hoveredState = false
+
+        if (
+            root.contextMenuInstance &&
+            root.hasSubmenu
+        ) {
+            root.contextMenuInstance.objectExited(
+                root,
+                root.contextMenuDepth
+            )
+        }
+    }
+
+    // ============================================================
+    // ACTIVATION
+    // ============================================================
+
+    function runActions() {
         if (!root.enabled)
             return
 
@@ -148,8 +174,14 @@ Item {
         // FUNCTION
         // --------------------------------------------------------
 
-        if (root.functionAction !== null) {
-            if (typeof root.functionAction === "function") {
+        if (
+            root.functionAction !==
+            null
+        ) {
+            if (
+                typeof root.functionAction ===
+                "function"
+            ) {
                 try {
                     root.functionAction()
                 } catch (e) {
@@ -177,21 +209,39 @@ Item {
             if (!root.process.running)
                 root.process.running = true
         }
+    }
 
-        // --------------------------------------------------------
-        // CLOSE
-        // --------------------------------------------------------
+    onClicked: function(mouse) {
+        if (!root.enabled)
+            return
 
         /*
-         * Submenus are navigation.
+         * A submenu item has two distinct interaction modes:
          *
-         * If this object has a submenu, the submenu remains open
-         * after the object is activated.
+         * hover:
+         *     temporary submenu
          *
-         * Normal leaf actions use closeOnClick.
+         * click:
+         *     pinned submenu
          */
+        if (root.hasSubmenu) {
+            root.runActions()
+
+            if (
+                root.contextMenuInstance
+            ) {
+                root.contextMenuInstance.openSubmenu(
+                    root,
+                    true
+                )
+            }
+
+            return
+        }
+
+        root.runActions()
+
         if (
-            !root.hasSubmenu &&
             root.closeOnClick &&
             root.contextMenuInstance
         ) {
@@ -199,266 +249,199 @@ Item {
         }
     }
 
-    function openSubmenu() {
-        if (
-            !root.enabled ||
-            !root.hasSubmenu ||
-            !root.contextMenuInstance
-        ) {
-            return
+    // ============================================================
+    // SIZE
+    // ============================================================
+
+    /*
+     * Text and arrow remain inside the same row.
+     */
+    readonly property real naturalWidth:
+        textItem.implicitWidth +
+        root.horizontalPadding * 2 +
+        (
+            root.hasSubmenu
+                ? (
+                    root.textArrowSpacing +
+                    arrow.implicitWidth
+                )
+                : 0
+        )
+
+    readonly property real naturalHeight:
+        root.rowHeight
+
+    /*
+     * Custom content can still be supplied.
+     *
+     * It appears below the normal menu row.
+     */
+    default property alias contentData:
+        contentColumn.data
+
+    // ============================================================
+    // CONTENT
+    // ============================================================
+
+    Item {
+        id: menuContent
+
+        anchors.left:
+            parent.left
+
+        anchors.right:
+            parent.right
+
+        anchors.top:
+            parent.top
+
+        height:
+            root.rowHeight
+
+        // --------------------------------------------------------
+        // TEXT
+        // --------------------------------------------------------
+
+        Text {
+            id: textItem
+
+            anchors.left:
+                parent.left
+
+            anchors.leftMargin:
+                root.horizontalPadding
+
+            anchors.right:
+                root.hasSubmenu
+                    ? arrow.left
+                    : parent.right
+
+            anchors.rightMargin:
+                root.hasSubmenu
+                    ? root.textArrowSpacing
+                    : root.horizontalPadding
+
+            anchors.verticalCenter:
+                parent.verticalCenter
+
+            text:
+                root.text
+
+            color:
+                !root.enabled
+                    ? root.disabledTextColor
+                    : root.hoveredState
+                        ? root.hoverTextColor
+                        : root.normalTextColor
+
+            font.family:
+                "Symbols Nerd Font"
+
+            font.pixelSize:
+                12
+
+            verticalAlignment:
+                Text.AlignVCenter
+
+            horizontalAlignment:
+                Text.AlignLeft
+
+            elide:
+                Text.ElideRight
+
+            Behavior on color {
+                ColorAnimation {
+                    duration:
+                        root.menuAnimationDuration
+
+                    easing.type:
+                        Easing.OutCubic
+                }
+            }
         }
 
-        root.contextMenuInstance.openSubmenu(
-            root.submenu,
-            root,
-            root.contextMenuDepth
-        )
+        // --------------------------------------------------------
+        // ARROW
+        // --------------------------------------------------------
+
+        Text {
+            id: arrow
+
+            visible:
+                root.hasSubmenu
+
+            anchors.right:
+                parent.right
+
+            anchors.rightMargin:
+                root.horizontalPadding
+
+            anchors.verticalCenter:
+                parent.verticalCenter
+
+            text:
+                root.submenuIcon
+
+            color:
+                root.enabled
+                    ? (
+                        root.hoveredState
+                            ? root.arrowHoverColor
+                            : root.arrowColor
+                    )
+                    : root.disabledTextColor
+
+            font.family:
+                "Symbols Nerd Font"
+
+            font.pixelSize:
+                12
+
+            horizontalAlignment:
+                Text.AlignRight
+
+            verticalAlignment:
+                Text.AlignVCenter
+        }
     }
 
     // ============================================================
-    // LAYOUT
+    // OPTIONAL CUSTOM CONTENT
     // ============================================================
 
     Column {
-        id: layout
+        id: contentColumn
 
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
+        anchors.left:
+            parent.left
 
-        spacing: 0
+        anchors.right:
+            parent.right
 
-        // ========================================================
-        // HEADER / CLICKABLE MENU ITEM
-        // ========================================================
+        anchors.top:
+            menuContent.bottom
 
-        Item {
-            id: header
+        spacing:
+            4
 
-            width:
-                root.width > 0
-                    ? root.width
-                    : root.implicitWidth
-
-            height:
-                root.headerHeight
-
-            readonly property real naturalWidth: {
-                let value =
-                    textItem.implicitWidth +
-                    root.horizontalPadding * 2
-
-                if (root.hasSubmenu)
-                    value +=
-                        root.spacing +
-                        submenuIndicator.implicitWidth
-
-                return value
-            }
-
-            // ----------------------------------------------------
-            // HOVER BACKGROUND
-            // ----------------------------------------------------
-
-            Rectangle {
-                anchors.fill: parent
-
-                radius: 7
-
-                color:
-                    root.enabled &&
-                    headerHover.hovered
-                        ? root.hoverBackground
-                        : "transparent"
-
-                Behavior on color {
-                    ColorAnimation {
-                        duration:
-                            root.animationDuration
-                    }
-                }
-            }
-
-            // ----------------------------------------------------
-            // TEXT
-            // ----------------------------------------------------
-
-            Text {
-                id: textItem
-
-                x:
-                    root.horizontalPadding
-
-                anchors.left:
-                    parent.left
-
-                anchors.verticalCenter:
-                    parent.verticalCenter
-
-                anchors.right:
-                    root.hasSubmenu
-                        ? submenuIndicator.left
-                        : parent.right
-
-                anchors.rightMargin:
-                    root.hasSubmenu
-                        ? root.spacing
-                        : root.horizontalPadding
-
-                text:
-                    root.text
-
-                color:
-                    !root.enabled
-                        ? root.disabledTextColor
-                        : headerHover.hovered
-                            ? root.hoverTextColor
-                            : root.normalTextColor
-
-                font.family:
-                    "Symbols Nerd Font"
-
-                font.pixelSize:
-                    12
-
-                verticalAlignment:
-                    Text.AlignVCenter
-
-                horizontalAlignment:
-                    Text.AlignLeft
-
-                elide:
-                    Text.ElideRight
-
-                Behavior on color {
-                    ColorAnimation {
-                        duration:
-                            root.animationDuration
-                    }
-                }
-            }
-
-            // ----------------------------------------------------
-            // SUBMENU ARROW
-            // ----------------------------------------------------
-
-            Text {
-                id: submenuIndicator
-
-                anchors.right:
-                    parent.right
-
-                anchors.rightMargin:
-                    root.horizontalPadding
-
-                anchors.verticalCenter:
-                    parent.verticalCenter
-
-                text:
-                    root.hasSubmenu
-                        ? root.submenuIcon
-                        : ""
-
-                visible:
-                    root.hasSubmenu
-
-                color:
-                    root.enabled
-                        ? (
-                            headerHover.hovered
-                                ? root.hoverTextColor
-                                : "#657681"
-                        )
-                        : root.disabledTextColor
-
-                font.family:
-                    "Symbols Nerd Font"
-
-                font.pixelSize:
-                    12
-
-                horizontalAlignment:
-                    Text.AlignRight
-
-                verticalAlignment:
-                    Text.AlignVCenter
-            }
-
-            // ----------------------------------------------------
-            // HOVER
-            // ----------------------------------------------------
-
-            HoverHandler {
-                id: headerHover
-
-                enabled:
-                    root.enabled
-
-                blocking: false
-
-                onHoveredChanged: {
-                    if (hovered)
-                        root.openSubmenu()
-                }
-            }
-
-            // ----------------------------------------------------
-            // CLICK
-            // ----------------------------------------------------
-
-            MouseArea {
-                anchors.fill: parent
-
-                enabled:
-                    root.enabled
-
-                acceptedButtons:
-                    Qt.LeftButton
-
-                onClicked: {
-                    root.activate()
-
-                    if (root.hasSubmenu)
-                        root.openSubmenu()
-                }
-            }
-        }
-
-        // ========================================================
-        // CUSTOM CONTENT
-        // ========================================================
-
-        Column {
-            id: body
-
-            width:
-                root.width > 0
-                    ? root.width
-                    : root.implicitWidth
-
-            spacing:
-                4
-
-            visible:
-                root.hasContent
-
-            implicitWidth:
-                childrenRect.width
-
-            implicitHeight:
-                childrenRect.height
-        }
+        visible:
+            children.length > 0
     }
 
     // ============================================================
-    // DEBUG
+    // GEOMETRY
     // ============================================================
 
-    Component.onCompleted: {
-        console.log(
-            "[ContextMenuObj]",
-            root.text,
-            "created"
+    width:
+        parent
+            ? parent.width
+            : root.naturalWidth
+
+    height:
+        root.rowHeight +
+        (
+            contentColumn.visible
+                ? contentColumn.childrenRect.height
+                : 0
         )
-    }
 }

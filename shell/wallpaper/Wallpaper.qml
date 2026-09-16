@@ -7,8 +7,7 @@ import qs.wallpaper.lib
 PanelWindow {
     id: root
 
-    required property var screen
-    property bool isDebug: false
+    property bool isDebug: true
 
     property var definition:
         WallpaperManager.definitionFor(root.screen)
@@ -28,7 +27,6 @@ PanelWindow {
             ? String(root.definition.fitting)
             : "crop"
 
-    screen: root.screen
 
     WlrLayershell.layer: WlrLayer.Background
     exclusionMode: ExclusionMode.Ignore

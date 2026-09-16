@@ -6,6 +6,7 @@ import Quickshell.Wayland
 
 import qs.desktop.components
 import qs.desktop.lib
+import qs.core.ui
 
 PanelWindow {
     id: root
@@ -14,7 +15,9 @@ PanelWindow {
     // REQUIRED
     // ============================================================
 
-    required property var screen
+    required property var _screen
+
+    screen: root._screen
 
     readonly property string screenName:
         String(root.screen.name || "")
@@ -163,6 +166,59 @@ PanelWindow {
     }
 
     color: "transparent"
+
+    // ============================================================
+    // CONTEXT MENU
+    // ============================================================
+
+    ContextMenu {
+        id: contextMenu
+
+        anchors.fill:
+            parent
+
+        z:
+            50000
+
+        outsideClickCloses:
+            true
+    }
+
+    /*
+     * Right-click only on empty WidgetLayer space.
+     *
+     * The menu itself passively tracks the cursor, so the caller
+     * does not have to provide a position.
+     */
+    MouseArea {
+        id: contextMenuMouseArea
+
+        anchors.fill:
+            widgetRoot
+
+        enabled:
+            !contextMenu.menuOpen
+
+        acceptedButtons:
+            Qt.RightButton
+
+        z:
+            -90
+
+        onPressed: {
+            if (root.editMode)
+                contextMenu.open(
+                    editContextMenu
+                )
+            else
+                contextMenu.open(
+                    runtimeContextMenu
+                )
+
+            mouse.accepted =
+                true
+        }
+    }
 
     // ============================================================
     // HELPERS
@@ -2417,6 +2473,181 @@ PanelWindow {
                         root.releaseSearchRadius +
                         "px"
                 }
+            }
+        }
+    }
+
+    // ============================================================
+    // RUNTIME MENU
+    // ============================================================
+
+    Component {
+        id: runtimeContextMenu
+
+        Column {
+            width: 230
+            spacing: 0
+
+            ContextMenuObj {
+                text:
+                    "󰌑  Enter Edit Mode"
+
+                functionAction:
+                    function() {
+                        root.editMode =
+                            true
+                    }
+            }
+
+            ContextMenuObj {
+                text:
+                    "󰑓  Reload Widgets"
+
+                functionAction:
+                    function() {
+                        root.reloadWidgets()
+                    }
+            }
+
+            ContextMenuObj {
+                text:
+                    "󰈙  Widget Tools"
+
+                submenu:
+                    runtimeToolsMenu
+            }
+
+            ContextMenuObj {
+                text:
+                    "󰈆  Close"
+            }
+        }
+    }
+
+    // ============================================================
+    // RUNTIME SUBMENU
+    // ============================================================
+
+    Component {
+        id: runtimeToolsMenu
+
+        Column {
+            width: 230
+            spacing: 0
+
+            ContextMenuObj {
+                text:
+                    "󰐕  Add Widget"
+
+                functionAction:
+                    function() {
+                        console.log(
+                            "[WidgetLayer] Add Widget requested"
+                        )
+                    }
+            }
+
+            ContextMenuObj {
+                text:
+                    "󰋊  Presets"
+
+                functionAction:
+                    function() {
+                        console.log(
+                            "[WidgetLayer] Presets requested"
+                        )
+                    }
+            }
+        }
+    }
+
+    // ============================================================
+    // EDIT MENU
+    // ============================================================
+
+    Component {
+        id: editContextMenu
+
+        Column {
+            width: 230
+            spacing: 0
+
+            ContextMenuObj {
+                text:
+                    "󰌑  Exit Edit Mode"
+
+                functionAction:
+                    function() {
+                        root.editMode =
+                            false
+                    }
+            }
+
+            ContextMenuObj {
+                text:
+                    "󰐕  Add Widget"
+
+                functionAction:
+                    function() {
+                        console.log(
+                            "[WidgetLayer] Add Widget requested"
+                        )
+                    }
+            }
+
+            ContextMenuObj {
+                text:
+                    "󰈙  Widget Tools"
+
+                submenu:
+                    editToolsMenu
+            }
+
+            ContextMenuObj {
+                text:
+                    "󰅖  Clear Selection"
+
+                functionAction:
+                    function() {
+                        root.clearSelection()
+                    }
+            }
+        }
+    }
+
+    // ============================================================
+    // EDIT SUBMENU
+    // ============================================================
+
+    Component {
+        id: editToolsMenu
+
+        Column {
+            width: 230
+            spacing: 0
+
+            ContextMenuObj {
+                text:
+                    "󰆏  Save Layout"
+
+                functionAction:
+                    function() {
+                        console.log(
+                            "[WidgetLayer] Save Layout requested"
+                        )
+                    }
+            }
+
+            ContextMenuObj {
+                text:
+                    "󰒓  Widget Settings"
+
+                functionAction:
+                    function() {
+                        console.log(
+                            "[WidgetLayer] Widget Settings requested"
+                        )
+                    }
             }
         }
     }

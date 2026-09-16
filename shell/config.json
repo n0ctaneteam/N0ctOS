@@ -42,6 +42,11 @@
     "wallpaper": {
         "monitors": {
             "eDP-1": {
+                "source": "/home/n0ctanedev/Downloads/galaxy-eyes.1920x1080.mp4",
+                "type": "video",
+                "fitting": "crop"
+            },
+            "HDMI-A-1": {
                 "source": "/home/n0ctanedev/Downloads/midnight-skyline.1920x1080.mp4",
                 "type": "video",
                 "fitting": "crop"
@@ -57,6 +62,7 @@
         "foo": true
     },
     "screens": [
+        "HDMI-A-1",
         "eDP-1"
     ]
 }

@@ -1,7 +1,6 @@
 import QtQuick
-import QtQuick.Controls
 
-import "."
+import qs.core.ui
 
 Item {
     id: root
@@ -10,1473 +9,1016 @@ Item {
     // PUBLIC API
     // ============================================================
 
-    /*
-     * One ContextMenu instance belongs to one owner/surface.
-     *
-     * Example:
-     *
-     *     Desktop
-     *         └── ContextMenu
-     *
-     *     Future FileManager
-     *         └── ContextMenu
-     *
-     * It is intentionally NOT a singleton.
-     */
+    property bool menuOpen: false
 
-    property bool opened: false
+    property bool outsideClickCloses: true
+
+    property var sourceItem: null
+
+    /*
+     * Cursor position in this ContextMenu's coordinate space.
+     */
+    property real cursorX: 0
+    property real cursorY: 0
+
+    // ============================================================
+    // GEOMETRY
+    // ============================================================
+
+    property int menuPadding: 4
+
+    property int menuGap: 6
+
+    property int submenuGap: 3
+
+    property int screenMargin: 8
+
+    property int minimumWidth: 180
+
+    property int maximumWidth: 420
+
+    property int maximumHeight: 640
+
+    // ============================================================
+    // ANIMATION
+    // ============================================================
 
     property int animationDuration: 180
 
-    // ------------------------------------------------------------
-    // VISUAL
-    // ------------------------------------------------------------
+    /*
+     * Main menu and submenu use the same opening animation.
+     *
+     * IMPORTANT:
+     *
+     * x/y are positioned BEFORE opacity becomes visible.
+     *
+     * There is therefore no "remember old position → slide to new"
+     * behavior when a submenu opens.
+     */
+    property int positionAnimationDuration:
+        180
 
-    property color backgroundColor: "#10161d"
-    property color borderColor: "#26323c"
+    // ============================================================
+    // SUBMENU
+    // ============================================================
 
-    property int borderWidth: 1
-    property int borderGlow: 0
-
-    property var cut: ({
-        topLeft: 12,
-        topRight: 12,
-        bottomRight: 12,
-        bottomLeft: 12
-    })
-
-    property var round: ({})
-
-    property real minPadding: 10
+    property int maxDepth: 8
 
     /*
-     * This is intentionally:
+     * For a submenu at depth N:
      *
-     *     min(minPadding, corner * 0.2)
+     * submenuPinned[N] = true
      *
-     * as requested.
+     * means it was clicked and should remain open.
      */
-    readonly property real padding: {
-        let largestCorner = 0
+    property var submenuPinned: []
 
-        const shapes = [
-            root.cut || {},
-            root.round || {}
-        ]
+    /*
+     * parentHovered[N]
+     *
+     * submenuHovered[N]
+     */
+    property var parentHovered: []
+    property var submenuHovered: []
 
-        for (const shape of shapes) {
-            for (const name of [
-                "topLeft",
-                "topRight",
-                "bottomRight",
-                "bottomLeft"
-            ]) {
-                if (shape[name] !== undefined)
-                    largestCorner =
-                        Math.max(
-                            largestCorner,
-                            Number(shape[name]) || 0
-                        )
-            }
+    /*
+     * Current submenu parent for every depth.
+     */
+    property var submenuParents: []
+
+    // ============================================================
+    // VISUAL
+    // ============================================================
+
+    property color backgroundColor:
+        "#090d12"
+
+    property color borderColor:
+        "#263541"
+
+    property int borderWidth:
+        1
+
+    property real radius:
+        8
+
+    // ============================================================
+    // POSITION TRACKING
+    // ============================================================
+
+    HoverHandler {
+        id: cursorTracker
+
+        blocking:
+            false
+
+        onPointChanged: {
+            const p =
+                point.position
+
+            root.cursorX =
+                p.x
+
+            root.cursorY =
+                p.y
+        }
+    }
+
+    // ============================================================
+    // OUTSIDE CLICK
+    // ============================================================
+
+    MouseArea {
+        anchors.fill:
+            parent
+
+        enabled:
+            root.menuOpen &&
+            root.outsideClickCloses
+
+        acceptedButtons:
+            Qt.AllButtons
+
+        z:
+            -10000
+
+        onPressed: {
+            root.close()
+
+            mouse.accepted =
+                true
+        }
+    }
+
+    // ============================================================
+    // HELPERS
+    // ============================================================
+
+    function boolAt(
+        array,
+        index
+    ) {
+        return (
+            array &&
+            index >= 0 &&
+            index < array.length &&
+            array[index] === true
+        )
+    }
+
+    function levelAt(depth) {
+        return levelRepeater.itemAt(
+            depth
+        )
+    }
+
+    function parentAt(depth) {
+        if (
+            depth < 0 ||
+            depth >= root.submenuParents.length
+        ) {
+            return null
         }
 
-        if (largestCorner <= 0)
-            return 0
-
-        return Math.min(
-            root.minPadding,
-            largestCorner * 0.2
+        return (
+            root.submenuParents[depth] ||
+            null
         )
     }
 
     // ============================================================
-    // PUBLIC STATE
-    // ============================================================
-
-    readonly property Item sourceItem:
-        root._sourceItem
-
-    readonly property point cursorPosition:
-        root._cursorPosition
-
-    readonly property Item currentContent:
-        root._activeLoader &&
-        root._activeLoader.item
-            ? root._activeLoader.item
-            : null
-
-    // ============================================================
-    // INTERNAL STATE
-    // ============================================================
-
-    property Item _sourceItem: null
-    property point _cursorPosition:
-        Qt.point(0, 0)
-
-    property bool _closing: false
-    property bool _opening: false
-
-    property int _activeIndex: 0
-    property int _pendingIndex: -1
-
-    property Component _requestedComponent: null
-
-    property real _targetWidth: 0
-    property real _targetHeight: 0
-    property real _targetX: 0
-    property real _targetY: 0
-
-    property var _submenuEntries: []
-
-    readonly property bool _visible:
-        root.opened ||
-        root._opening ||
-        root._closing
-
-    readonly property Item _activeLoader:
-        root._activeIndex === 0
-            ? contentLoaderA
-            : contentLoaderB
-
-    readonly property Item _pendingLoader:
-        root._pendingIndex === 0
-            ? contentLoaderA
-            : root._pendingIndex === 1
-                ? contentLoaderB
-                : null
-
-    // ============================================================
-    // PUBLIC API
+    // ROOT OPEN
     // ============================================================
 
     function open(component) {
-        if (!component) {
-            console.warn(
-                "[ContextMenu] open() requires a Component"
-            )
-            return false
-        }
-
-        root._capturePointerContext()
-
-        if (!root.opened && !root._closing) {
-            root._openInitial(component)
-            return true
-        }
-
-        if (root._closing) {
-            root._reopenWhileClosing(component)
-            return true
-        }
-
-        root._replace(component)
-        return true
-    }
-
-    function close() {
-        if (
-            !root.opened &&
-            !root._opening &&
-            !root._closing
-        ) {
+        if (!component)
             return
-        }
-
-        root._closeAllSubmenus()
 
         /*
-         * Keep the shell visible while opacity/size animate out.
-         *
-         * This is the part the previous implementation was missing:
-         * `visible` is NOT bound directly to `opened`.
+         * Reset all submenu state.
          */
-        root.opened = false
-        root._opening = false
-        root._closing = true
+        root.submenuPinned =
+            []
 
-        root._targetWidth = 0
-        root._targetHeight = 0
+        root.parentHovered =
+            []
 
-        menuShell.opacity = 0
+        root.submenuHovered =
+            []
 
-        closeCleanupTimer.restart()
-    }
+        root.submenuParents =
+            []
 
-    // ============================================================
-    // INITIAL OPEN
-    // ============================================================
+        root.sourceItem =
+            root.parent || root
 
-    function _openInitial(component) {
-        root._requestedComponent = component
+        root.menuOpen =
+            true
 
-        root._activeIndex = 0
-        root._pendingIndex = -1
+        const level =
+            root.levelAt(0)
 
-        root._opening = true
-        root._closing = false
+        if (!level)
+            return
 
-        /*
-         * CRITICAL:
-         *
-         * When opening from closed state, the position is assigned
-         * DIRECTLY. No x/y animation is allowed here.
-         */
-        root._loadInitialComponent(component)
-    }
-
-    function _loadInitialComponent(component) {
-        contentLoaderA.sourceComponent = null
-        contentLoaderB.sourceComponent = null
-
-        contentLoaderA.opacity = 0
-
-        contentLoaderA.sourceComponent =
+        level.prepareForOpen(
             component
-    }
-
-    function _initialContentLoaded(loader) {
-        if (!loader.item)
-            return
-
-        root._prepareContent(
-            loader.item,
-            0,
-            null
         )
 
-        const size =
-            root._measureContent(
-                loader.item
-            )
-
-        root._targetWidth =
-            size.width +
-            root.padding * 2
-
-        root._targetHeight =
-            size.height +
-            root.padding * 2
-
-        const position =
-            root._mainMenuPosition(
-                root._cursorPosition,
-                root._targetWidth,
-                root._targetHeight
-            )
-
         /*
-         * SNAP position.
+         * IMPORTANT:
          *
-         * No position animation on initial opening.
-         */
-        root._targetX = position.x
-        root._targetY = position.y
-
-        menuShell.x = root._targetX
-        menuShell.y = root._targetY
-
-        /*
-         * Start from zero size and zero opacity.
+         * Position first.
          *
-         * Width/height and opacity animate in.
-         * x/y do not.
+         * The level is still invisible.
          */
-        menuShell.width = 0
-        menuShell.height = 0
-        menuShell.opacity = 0
+        level.positionRoot()
 
-        root.opened = true
-
-        Qt.callLater(function() {
-            if (!root.opened)
-                return
-
-            root._opening = false
-
-            /*
-             * `Behavior` handles width/height and opacity.
-             */
-            menuShell.width =
-                root._targetWidth
-
-            menuShell.height =
-                root._targetHeight
-
-            menuShell.opacity = 1
-
-            loader.opacity = 1
-        })
-    }
-
-    // ============================================================
-    // REOPEN WHILE CLOSING
-    // ============================================================
-
-    function _reopenWhileClosing(component) {
-        closeCleanupTimer.stop()
-
-        root._closing = false
-        root._opening = true
-        root.opened = false
-
-        root._closeAllSubmenus()
-
-        root._activeIndex = 0
-        root._pendingIndex = -1
-
-        root._capturePointerContext()
-
-        contentLoaderA.sourceComponent = null
-        contentLoaderB.sourceComponent = null
-        contentLoaderA.opacity = 0
-
-        root._requestedComponent = component
-
-        contentLoaderA.sourceComponent = component
-    }
-
-    // ============================================================
-    // REPLACEMENT
-    // ============================================================
-
-    function _replace(component) {
-        if (!root.opened)
-            return
-
-        if (root._pendingIndex !== -1)
-            root._promotePending()
-
-        root._capturePointerContext()
-
-        const nextIndex =
-            root._activeIndex === 0
-                ? 1
-                : 0
-
-        const loader =
-            nextIndex === 0
-                ? contentLoaderA
-                : contentLoaderB
-
-        loader.sourceComponent = null
-        loader.opacity = 0
-
-        root._pendingIndex = nextIndex
-        root._requestedComponent = component
-
-        loader.sourceComponent =
-            component
-    }
-
-    function _replacementLoaded(
-        index,
-        loader
-    ) {
-        if (
-            index !== root._pendingIndex ||
-            !loader.item
-        ) {
-            return
-        }
-
-        root._prepareContent(
-            loader.item,
-            0,
-            null
-        )
-
-        const size =
-            root._measureContent(
-                loader.item
-            )
-
-        root._targetWidth =
-            size.width +
-            root.padding * 2
-
-        root._targetHeight =
-            size.height +
-            root.padding * 2
-
-        const position =
-            root._mainMenuPosition(
-                root._cursorPosition,
-                root._targetWidth,
-                root._targetHeight
-            )
+        level.snapPosition()
 
         /*
-         * EXISTING OPEN MENU:
-         *
-         * Position is allowed to animate.
+         * Now animate only opacity/size.
          */
-        root._targetX = position.x
-        root._targetY = position.y
-
-        /*
-         * The x/y Behavior is only enabled during replacement.
-         */
-        menuShell.animatePosition = true
-
-        loader.opacity = 1
-        root._activeLoader.opacity = 0
-
-        replacementCleanupTimer.restart()
-    }
-
-    function _promotePending() {
-        if (root._pendingIndex === -1)
-            return
-
-        const oldIndex =
-            root._activeIndex
-
-        root._activeIndex =
-            root._pendingIndex
-
-        root._pendingIndex = -1
-
-        const oldLoader =
-            oldIndex === 0
-                ? contentLoaderA
-                : contentLoaderB
-
-        oldLoader.opacity = 0
-        oldLoader.sourceComponent = null
-    }
-
-    function _finishReplacement() {
-        if (root._pendingIndex === -1)
-            return
-
-        const oldIndex =
-            root._activeIndex
-
-        root._activeIndex =
-            root._pendingIndex
-
-        root._pendingIndex = -1
-
-        const oldLoader =
-            oldIndex === 0
-                ? contentLoaderA
-                : contentLoaderB
-
-        oldLoader.opacity = 0
-        oldLoader.sourceComponent = null
-
-        /*
-         * Leave the menu in its stable state.
-         *
-         * A subsequent opening from the closed state will snap
-         * position again.
-         */
-        menuShell.animatePosition = false
+        level.openVisible()
     }
 
     // ============================================================
-    // CONTENT
-    // ============================================================
-
-    function _prepareContent(
-        item,
-        depth,
-        parentObject
-    ) {
-        if (!item)
-            return
-
-        root._bindContextObjects(
-            item,
-            depth,
-            parentObject
-        )
-
-        /*
-         * Force the supplied content to use the actual menu width
-         * after the outer shell has determined it.
-         */
-        root._applyContentWidth(
-            item,
-            Math.max(
-                0,
-                root._targetWidth -
-                root.padding * 2
-            )
-        )
-    }
-
-    function _bindContextObjects(
-        item,
-        depth,
-        parentObject
-    ) {
-        if (!item)
-            return
-
-        if (
-            item.hasOwnProperty(
-                "contextMenuInstance"
-            )
-        ) {
-            item.contextMenuInstance = root
-            item.contextMenuDepth = depth
-            item.parentMenuObject = parentObject
-        }
-
-        for (const child of item.children) {
-            root._bindContextObjects(
-                child,
-                depth,
-                parentObject
-            )
-        }
-    }
-
-    function _applyContentWidth(
-        item,
-        width
-    ) {
-        if (!item)
-            return
-
-        if (
-            item.hasOwnProperty(
-                "width"
-            )
-        ) {
-            if (
-                item.hasOwnProperty(
-                    "naturalWidth"
-                )
-            ) {
-                item.width = width
-            } else if (
-                item.children &&
-                item.children.length
-            ) {
-                item.width = width
-            }
-        }
-
-        for (const child of item.children)
-            root._applyContentWidth(
-                child,
-                width
-            )
-    }
-
-    function _measureContent(item) {
-        if (!item)
-            return {
-                width: 1,
-                height: 1
-            }
-
-        let width = 0
-        let height = 0
-
-        width = Math.max(
-            width,
-            Number(
-                item.implicitWidth ||
-                item.width ||
-                0
-            )
-        )
-
-        height = Math.max(
-            height,
-            Number(
-                item.implicitHeight ||
-                item.height ||
-                0
-            )
-        )
-
-        /*
-         * ContextMenuObj exposes natural dimensions.
-         */
-        if (
-            item.hasOwnProperty(
-                "naturalWidth"
-            )
-        ) {
-            width = Math.max(
-                width,
-                Number(
-                    item.naturalWidth
-                ) || 0
-            )
-
-            height = Math.max(
-                height,
-                Number(
-                    item.naturalHeight
-                ) || 0
-            )
-        }
-
-        /*
-         * Inspect children as a fallback for arbitrary QML
-         * Components.
-         */
-        let childMaxRight = 0
-        let childMaxBottom = 0
-
-        for (const child of item.children) {
-            if (!child.visible)
-                continue
-
-            const childWidth =
-                Math.max(
-                    Number(child.width) || 0,
-                    Number(child.implicitWidth) || 0
-                )
-
-            const childHeight =
-                Math.max(
-                    Number(child.height) || 0,
-                    Number(child.implicitHeight) || 0
-                )
-
-            childMaxRight =
-                Math.max(
-                    childMaxRight,
-                    Number(child.x) +
-                    childWidth
-                )
-
-            childMaxBottom =
-                Math.max(
-                    childMaxBottom,
-                    Number(child.y) +
-                    childHeight
-                )
-        }
-
-        const rectWidth =
-            Number(
-                item.childrenRect.width
-            ) || 0
-
-        const rectHeight =
-            Number(
-                item.childrenRect.height
-            ) || 0
-
-        width = Math.max(
-            width,
-            childMaxRight,
-            rectWidth
-        )
-
-        height = Math.max(
-            height,
-            childMaxBottom,
-            rectHeight
-        )
-
-        return {
-            width: Math.max(1, width),
-            height: Math.max(1, height)
-        }
-    }
-
-    // ============================================================
-    // SUBMENUS
+    // SUBMENU OPEN
     // ============================================================
 
     function openSubmenu(
-        component,
-        sourceObject,
-        depth
+        parentObject,
+        pinned
     ) {
         if (
-            !component ||
-            !sourceObject
+            !root.menuOpen ||
+            !parentObject ||
+            !parentObject.submenu
+        ) {
+            return
+        }
+
+        const depth =
+            Number(
+                parentObject.contextMenuDepth
+            ) + 1
+
+        if (
+            depth < 1 ||
+            depth >= root.maxDepth
         ) {
             return
         }
 
         /*
-         * Remove every deeper branch before opening the requested
-         * submenu.
+         * A different object on the same parent level replaces
+         * the previous hover submenu.
+         *
+         * A clicked submenu remains pinned.
          */
-        root._closeSubmenusFrom(
-            depth + 1
+        const oldParent =
+            root.parentAt(depth)
+
+        const sameParent =
+            oldParent === parentObject
+
+        if (
+            !sameParent
+        ) {
+            root.closeFromDepth(
+                depth
+            )
+        }
+
+        let pinnedState =
+            root.submenuPinned.slice(0)
+
+        pinnedState[depth] =
+            pinned === true
+
+        root.submenuPinned =
+            pinnedState
+
+        let parentState =
+            root.parentHovered.slice(0)
+
+        parentState[depth] =
+            true
+
+        root.parentHovered =
+            parentState
+
+        let parents =
+            root.submenuParents.slice(0)
+
+        parents[depth] =
+            parentObject
+
+        root.submenuParents =
+            parents
+
+        const level =
+            root.levelAt(depth)
+
+        if (!level)
+            return
+
+        level.prepareForOpen(
+            parentObject.submenu
         )
 
-        const existing =
-            root._submenuEntries.find(
-                function(entry) {
-                    return (
-                        entry.owner === sourceObject &&
-                        entry.depth === depth + 1
-                    )
-                }
-            )
+        /*
+         * VERY IMPORTANT:
+         *
+         * The submenu is positioned while invisible.
+         *
+         * Therefore it NEVER starts at its previous position and
+         * slides to its new position.
+         */
+        level.positionSubmenu(
+            parentObject
+        )
 
-        if (existing)
-            return
+        level.snapPosition()
 
-        const surface =
-            submenuSurfaceComponent.createObject(
-                cascadeLayer,
-                {
-                    menuComponent: component,
-                    menuOwner: sourceObject,
-                    menuDepth: depth + 1,
-                    contextMenuRoot: root
-                }
-            )
+        level.openVisible()
 
-        if (!surface) {
-            console.warn(
-                "[ContextMenu]",
-                "failed to create submenu"
-            )
-            return
-        }
-
-        root._submenuEntries.push({
-            owner: sourceObject,
-            depth: depth + 1,
-            surface: surface
-        })
-
-        surface.showMenu()
-    }
-
-    function _prepareSubmenu(
-        surface,
-        content
-    ) {
-        if (!content)
-            return
-
-        root._bindContextObjects(
-            content,
-            surface.menuDepth,
-            surface.menuOwner
+        root.clearDeeperState(
+            depth
         )
     }
 
-    function _closeSubmenusFrom(
-        depth
+    // ============================================================
+    // OBJECT HOVER
+    // ============================================================
+
+    function objectHovered(
+        object,
+        parentDepth
     ) {
-        for (
-            let i =
-                root._submenuEntries.length - 1;
-            i >= 0;
-            --i
-        ) {
-            const entry =
-                root._submenuEntries[i]
+        if (!root.menuOpen)
+            return
 
-            if (entry.depth < depth)
-                continue
+        const depth =
+            Number(parentDepth)
 
-            if (entry.surface)
-                entry.surface.closeMenu()
+        /*
+         * Hovering another object on a menu level means the
+         * temporary submenu belonging to that level should be
+         * replaced.
+         *
+         * A clicked/pinned submenu is left alone.
+         */
+        if (depth >= 0) {
+            const submenuDepth =
+                depth + 1
 
-            root._submenuEntries.splice(
-                i,
-                1
-            )
-        }
-    }
-
-    function _closeAllSubmenus() {
-        for (
-            let i =
-                root._submenuEntries.length - 1;
-            i >= 0;
-            --i
-        ) {
-            const entry =
-                root._submenuEntries[i]
-
-            if (entry.surface)
-                entry.surface.closeMenu()
-        }
-
-        root._submenuEntries = []
-    }
-
-    function _removeSubmenuSurface(surface) {
-        for (
-            let i =
-                root._submenuEntries.length - 1;
-            i >= 0;
-            --i
-        ) {
             if (
-                root._submenuEntries[i].surface ===
-                surface
+                !root.boolAt(
+                    root.submenuPinned,
+                    submenuDepth
+                )
             ) {
-                root._submenuEntries.splice(
-                    i,
-                    1
+                root.closeFromDepth(
+                    submenuDepth
                 )
             }
+
+            let state =
+                root.parentHovered.slice(0)
+
+            state[submenuDepth] =
+                true
+
+            root.parentHovered =
+                state
         }
-    }
-
-    // ============================================================
-    // POINTER / SOURCE
-    // ============================================================
-
-    function _capturePointerContext() {
-        root._cursorPosition =
-            pointerTracker.point.position
-
-        root._sourceItem =
-            root._findSourceItem()
-    }
-
-    function _findSourceItem() {
-        const surface =
-            root.parent ||
-            (
-                root.Window
-                    ? root.Window.contentItem
-                    : null
-            )
-
-        if (!surface)
-            return null
-
-        const point =
-            surface.mapFromItem(
-                root,
-                root._cursorPosition
-            )
-
-        const wasVisible =
-            root.visible
 
         /*
-         * Hide the menu itself while resolving the item beneath it.
+         * A submenu-opening object opens its submenu on hover.
          */
-        root.visible = false
-
-        const found =
-            root._deepestItemAt(
-                surface,
-                point
+        if (object.hasSubmenu)
+            root.openSubmenu(
+                object,
+                false
             )
-
-        root.visible = wasVisible
-
-        return found === surface
-            ? null
-            : found
-    }
-
-    function _deepestItemAt(
-        item,
-        point
-    ) {
-        if (!item)
-            return null
-
-        const child =
-            item.childAt(
-                point.x,
-                point.y
-            )
-
-        if (!child)
-            return item
-
-        const childPoint =
-            item.mapToItem(
-                child,
-                point
-            )
-
-        const deeper =
-            root._deepestItemAt(
-                child,
-                childPoint
-            )
-
-        return deeper || child
     }
 
     // ============================================================
-    // POSITIONING
+    // OBJECT EXIT
     // ============================================================
 
-    function _mainMenuPosition(
-        point,
-        menuWidth,
-        menuHeight
+    function objectExited(
+        object,
+        parentDepth
     ) {
-        let x = point.x
-        let y = point.y
+        if (!root.menuOpen)
+            return
+
+        const submenuDepth =
+            Number(parentDepth) + 1
+
+        let state =
+            root.parentHovered.slice(0)
+
+        state[submenuDepth] =
+            false
+
+        root.parentHovered =
+            state
 
         /*
-         * First choice:
-         * top-left exactly at cursor.
-         */
-
-        /*
-         * Horizontal flip if needed.
+         * Click-opened submenu is pinned.
          */
         if (
-            x + menuWidth >
-            root.width
+            root.boolAt(
+                root.submenuPinned,
+                submenuDepth
+            )
         ) {
-            x =
-                point.x -
-                menuWidth
+            return
+        }
+
+        root.checkSubmenuLifetime(
+            submenuDepth
+        )
+    }
+
+    // ============================================================
+    // SUBMENU HOVER
+    // ============================================================
+
+    function levelHovered(
+        depth
+    ) {
+        let state =
+            root.submenuHovered.slice(0)
+
+        state[depth] =
+            true
+
+        root.submenuHovered =
+            state
+    }
+
+    function levelExited(
+        depth
+    ) {
+        let state =
+            root.submenuHovered.slice(0)
+
+        state[depth] =
+            false
+
+        root.submenuHovered =
+            state
+
+        root.checkSubmenuLifetime(
+            depth
+        )
+    }
+
+    // ============================================================
+    // SUBMENU LIFETIME
+    // ============================================================
+
+    function checkSubmenuLifetime(
+        depth
+    ) {
+        if (
+            depth < 1 ||
+            !root.menuOpen
+        ) {
+            return
         }
 
         /*
-         * Vertical flip if needed.
+         * Clicked submenu:
+         *
+         * ignore hover exit completely.
          */
         if (
-            y + menuHeight >
-            root.height
+            root.boolAt(
+                root.submenuPinned,
+                depth
+            )
         ) {
-            y =
-                point.y -
-                menuHeight
+            return
         }
 
         /*
-         * Final hard clamp.
+         * Desired hover behavior:
+         *
+         * parent hovered OR submenu hovered
+         *     = stay
+         *
+         * neither
+         *     = close
          */
-        x = Math.max(
-            0,
-            Math.min(
-                x,
-                Math.max(
-                    0,
-                    root.width - menuWidth
-                )
+        const parentIsHovered =
+            root.boolAt(
+                root.parentHovered,
+                depth
             )
-        )
 
-        y = Math.max(
-            0,
-            Math.min(
-                y,
-                Math.max(
-                    0,
-                    root.height - menuHeight
-                )
+        const submenuIsHovered =
+            root.boolAt(
+                root.submenuHovered,
+                depth
             )
-        )
 
-        return Qt.point(x, y)
+        if (
+            parentIsHovered ||
+            submenuIsHovered
+        ) {
+            return
+        }
+
+        root.closeFromDepth(
+            depth
+        )
     }
 
-    function _submenuPosition(
-        sourceObject,
-        width,
-        height
+    // ============================================================
+    // CLOSE BRANCH
+    // ============================================================
+
+    function clearDeeperState(
+        depth
     ) {
-        const sourceTopLeft =
-            sourceObject.mapToItem(
-                root,
-                0,
-                0
-            )
+        let pinned =
+            root.submenuPinned.slice(0)
 
-        const sourceRight =
-            sourceTopLeft.x +
-            sourceObject.width
+        let parents =
+            root.parentHovered.slice(0)
 
-        const rightSpace =
-            root.width -
-            sourceRight
+        let hovered =
+            root.submenuHovered.slice(0)
 
-        const leftSpace =
-            sourceTopLeft.x
-
-        let x
-
-        /*
-         * Native-style cascading behavior:
-         *
-         * right if possible
-         * otherwise left
-         * otherwise clamp
-         */
-        if (rightSpace >= width) {
-            x = sourceRight
-        } else if (leftSpace >= width) {
-            x =
-                sourceTopLeft.x -
-                width
-        } else if (
-            rightSpace >= leftSpace
+        for (
+            let i = depth + 1;
+            i < root.maxDepth;
+            ++i
         ) {
-            x = sourceRight
-        } else {
-            x =
-                sourceTopLeft.x -
-                width
+            pinned[i] =
+                false
+
+            parents[i] =
+                false
+
+            hovered[i] =
+                false
         }
 
-        let y =
-            sourceTopLeft.y
+        root.submenuPinned =
+            pinned
+
+        root.parentHovered =
+            parents
+
+        root.submenuHovered =
+            hovered
+    }
+
+    function closeFromDepth(
+        depth
+    ) {
+        if (
+            depth < 1
+        ) {
+            return
+        }
+
+        for (
+            let i = depth;
+            i < root.maxDepth;
+            ++i
+        ) {
+            const level =
+                root.levelAt(i)
+
+            if (level)
+                level.closeVisible()
+        }
 
         /*
-         * Clamp vertically.
+         * State is cleared immediately so a new hover can open
+         * another submenu without waiting for the animation.
          */
-        y = Math.max(
-            0,
-            Math.min(
-                y,
-                Math.max(
-                    0,
-                    root.height - height
-                )
-            )
-        )
+        let pinned =
+            root.submenuPinned.slice(0)
 
-        /*
-         * Clamp horizontally too.
-         */
-        x = Math.max(
-            0,
-            Math.min(
-                x,
-                Math.max(
-                    0,
-                    root.width - width
-                )
-            )
-        )
+        let parents =
+            root.parentHovered.slice(0)
 
-        return Qt.point(
-            x,
-            y
-        )
+        let hovered =
+            root.submenuHovered.slice(0)
+
+        let parentObjects =
+            root.submenuParents.slice(0)
+
+        for (
+            let i = depth;
+            i < root.maxDepth;
+            ++i
+        ) {
+            pinned[i] =
+                false
+
+            parents[i] =
+                false
+
+            hovered[i] =
+                false
+
+            parentObjects[i] =
+                null
+        }
+
+        root.submenuPinned =
+            pinned
+
+        root.parentHovered =
+            parents
+
+        root.submenuHovered =
+            hovered
+
+        root.submenuParents =
+            parentObjects
     }
 
     // ============================================================
-    // MAIN MENU SHELL
+    // COMPLETE CLOSE
     // ============================================================
 
-    Item {
-        id: menuShell
+    function close() {
+        if (!root.menuOpen)
+            return
 
-        property bool animatePosition: false
+        root.menuOpen =
+            false
 
-        x:
-            root._targetX
+        for (
+            let i = 0;
+            i < root.maxDepth;
+            ++i
+        ) {
+            const level =
+                root.levelAt(i)
 
-        y:
-            root._targetY
-
-        width:
-            root._targetWidth
-
-        height:
-            root._targetHeight
-
-        visible:
-            root._visible
-
-        opacity: 0
-
-        /*
-         * Width / height always animate.
-         */
-        Behavior on width {
-            NumberAnimation {
-                duration:
-                    root.animationDuration
-
-                easing.type:
-                    Easing.OutCubic
-            }
+            if (level)
+                level.closeVisible()
         }
 
-        Behavior on height {
-            NumberAnimation {
-                duration:
-                    root.animationDuration
+        closeTimer.restart()
+    }
 
-                easing.type:
-                    Easing.OutCubic
-            }
-        }
+    // ============================================================
+    // LEVEL REPEATER
+    // ============================================================
 
-        /*
-         * Position ONLY animates while an already-open menu is
-         * being replaced.
-         *
-         * Initial opening snaps x/y directly.
-         */
-        Behavior on x {
-            enabled:
-                menuShell.animatePosition
+    Repeater {
+        id: levelRepeater
 
-            NumberAnimation {
-                duration:
-                    root.animationDuration
+        model:
+            root.maxDepth
 
-                easing.type:
-                    Easing.OutCubic
-            }
-        }
+        delegate: CutBox {
+            id: level
 
-        Behavior on y {
-            enabled:
-                menuShell.animatePosition
+            property int depth:
+                index
 
-            NumberAnimation {
-                duration:
-                    root.animationDuration
+            property bool opened:
+                false
 
-                easing.type:
-                    Easing.OutCubic
-            }
-        }
+            property bool opening:
+                false
 
-        Behavior on opacity {
-            NumberAnimation {
-                duration:
-                    root.animationDuration
+            property bool closing:
+                false
 
-                easing.type:
-                    Easing.OutCubic
-            }
-        }
+            property Component currentComponent:
+                null
 
-        CutBox {
-            anchors.fill: parent
+            readonly property Item activeItem:
+                loader.item
 
-            cut:
-                root.cut
+            readonly property real naturalContentWidth:
+                root.measureWidth(
+                    level.activeItem
+                )
 
-            round:
-                root.round
+            readonly property real naturalContentHeight:
+                root.measureHeight(
+                    level.activeItem
+                )
+
+            // ----------------------------------------------------
+            // CUTBOX SURFACE
+            // ----------------------------------------------------
+
+            cut: ({})
+
+            round: ({
+                topLeft: level.radius,
+                topRight: level.radius,
+                bottomRight: level.radius,
+                bottomLeft: level.radius
+            })
 
             bgColor:
                 root.backgroundColor
 
-            borderColor:
-                root.borderColor
-
             borderWidth:
                 root.borderWidth
 
-            borderGlow:
-                root.borderGlow
+            borderColor:
+                root.borderColor
 
-            interactive: false
+            interactive:
+                root.menuOpen
 
             // ----------------------------------------------------
-            // MAIN CONTENT
+            // SIZE
+            // ----------------------------------------------------
+
+            width:
+                Math.min(
+                    root.maximumWidth,
+
+                    Math.max(
+                        root.minimumWidth,
+
+                        level.naturalContentWidth +
+                        root.menuPadding * 2
+                    )
+                )
+
+            height:
+                Math.min(
+                    root.maximumHeight,
+
+                    Math.max(
+                        1,
+
+                        level.naturalContentHeight +
+                        root.menuPadding * 2
+                    )
+                )
+
+            // ----------------------------------------------------
+            // VISIBILITY
+            // ----------------------------------------------------
+
+            opacity:
+                level.opened
+                    ? 1
+                    : 0
+
+            visible:
+                opacity > 0.001
+
+            z:
+                1000 +
+                level.depth
+
+            // ----------------------------------------------------
+            // INTERNAL CONTENT
             // ----------------------------------------------------
 
             Item {
-                id: contentArea
-
-                anchors.fill: parent
+                anchors.fill:
+                    parent
 
                 anchors.margins:
-                    root.padding
-
-                clip: true
+                    root.menuPadding
 
                 Loader {
-                    id: contentLoaderA
+                    id: loader
 
-                    anchors.fill: parent
+                    anchors.fill:
+                        parent
 
-                    asynchronous: true
-
-                    opacity: 0
+                    asynchronous:
+                        false
 
                     onLoaded: {
                         if (!item)
                             return
 
-                        if (
-                            root._pendingIndex === -1 &&
-                            root._opening
-                        ) {
-                            root._initialContentLoaded(
-                                this
+                        root.bindTree(
+                            item,
+                            level.depth,
+                            root.parentAt(
+                                level.depth
                             )
-                        }
-                    }
-
-                    Behavior on opacity {
-                        NumberAnimation {
-                            duration:
-                                root.animationDuration
-
-                            easing.type:
-                                Easing.OutCubic
-                        }
-                    }
-                }
-
-                Loader {
-                    id: contentLoaderB
-
-                    anchors.fill: parent
-
-                    asynchronous: true
-
-                    opacity: 0
-
-                    onLoaded: {
-                        if (!item)
-                            return
-
-                        if (
-                            root._pendingIndex === 1
-                        ) {
-                            root._replacementLoaded(
-                                1,
-                                this
-                            )
-                        }
-                    }
-
-                    Behavior on opacity {
-                        NumberAnimation {
-                            duration:
-                                root.animationDuration
-
-                            easing.type:
-                                Easing.OutCubic
-                        }
+                        )
                     }
                 }
             }
-        }
-    }
 
-    // ============================================================
-    // SUBMENU LAYER
-    // ============================================================
+            // ----------------------------------------------------
+            // SUBMENU HOVER
+            // ----------------------------------------------------
 
-    Item {
-        id: cascadeLayer
-
-        anchors.fill: parent
-
-        z:
-            1000
-    }
-
-    // ============================================================
-    // POINTER TRACKER
-    // ============================================================
-
-    HoverHandler {
-        id: pointerTracker
-
-        enabled: true
-        blocking: false
-
-        onPointChanged:
-            root._cursorPosition =
-                point.position
-    }
-
-    // ============================================================
-    // SUBMENU SURFACE COMPONENT
-    // ============================================================
-
-    Component {
-        id: submenuSurfaceComponent
-
-        Item {
-            id: surface
-
-            property Component menuComponent: null
-            property Item menuOwner: null
-            property int menuDepth: 0
-            property Item contextMenuRoot: null
-
-            property bool closing: false
-            property bool shown: false
-
-            property real naturalWidth: 1
-            property real naturalHeight: 1
-
-            width:
-                naturalWidth
-
-            height:
-                naturalHeight
-
-            opacity: 0
-
-            /*
-             * The submenu is positioned only after its content has
-             * loaded and its natural size is known.
-             */
-            function showMenu() {
-                if (!surface.menuComponent)
-                    return
-
-                submenuLoader.sourceComponent =
-                    surface.menuComponent
+            onHovered: {
+                if (level.depth > 0)
+                    root.levelHovered(
+                        level.depth
+                    )
             }
 
-            function prepareContent(item) {
-                if (!item)
+            onExited: {
+                if (level.depth > 0)
+                    root.levelExited(
+                        level.depth
+                    )
+            }
+
+            // ----------------------------------------------------
+            // CONTENT
+            // ----------------------------------------------------
+
+            function prepareForOpen(
+                component
+            ) {
+                if (!component)
                     return
 
-                root._prepareSubmenu(
-                    surface,
-                    item
-                )
+                level.currentComponent =
+                    component
 
-                const size =
-                    root._measureContent(
-                        item
-                    )
+                level.opened =
+                    false
 
-                surface.naturalWidth =
-                    Math.max(
-                        1,
-                        size.width +
-                        root.padding * 2
-                    )
+                level.opacity =
+                    0
 
-                surface.naturalHeight =
-                    Math.max(
-                        1,
-                        size.height +
-                        root.padding * 2
-                    )
+                loader.sourceComponent =
+                    component
+            }
+
+            // ----------------------------------------------------
+            // POSITION
+            // ----------------------------------------------------
+
+            function positionRoot() {
+                let px =
+                    root.cursorX +
+                    root.menuGap
+
+                let py =
+                    root.cursorY +
+                    root.menuGap
 
                 /*
-                 * Content receives the actual menu width.
+                 * Horizontal flip.
                  */
-                root._applyContentWidth(
-                    item,
-                    Math.max(
-                        0,
-                        surface.naturalWidth -
-                        root.padding * 2
-                    )
+                if (
+                    px +
+                        level.width +
+                        root.screenMargin >
+                    root.width
+                ) {
+                    px =
+                        root.cursorX -
+                        level.width -
+                        root.menuGap
+                }
+
+                /*
+                 * Vertical flip.
+                 */
+                if (
+                    py +
+                        level.height +
+                        root.screenMargin >
+                    root.height
+                ) {
+                    py =
+                        root.cursorY -
+                        level.height -
+                        root.menuGap
+                }
+
+                root.clampPosition(
+                    level,
+                    px,
+                    py
                 )
-
-                const position =
-                    root._submenuPosition(
-                        surface.menuOwner,
-                        surface.width,
-                        surface.height
-                    )
-
-                surface.x =
-                    position.x
-
-                surface.y =
-                    position.y
-
-                surface.closing = false
-                surface.shown = true
-
-                surface.opacity = 0
-
-                Qt.callLater(function() {
-                    if (!surface.shown)
-                        return
-
-                    surface.opacity = 1
-                })
             }
 
-            function closeMenu() {
-                if (surface.closing)
+            function positionSubmenu(
+                parentObject
+            ) {
+                if (!parentObject)
                     return
 
-                surface.closing = true
-                surface.shown = false
-
-                surface.opacity = 0
-
-                destroyTimer.restart()
-            }
-
-            CutBox {
-                anchors.fill: parent
-
-                cut:
-                    root.cut
-
-                round:
-                    root.round
-
-                bgColor:
-                    root.backgroundColor
-
-                borderColor:
-                    root.borderColor
-
-                borderWidth:
-                    root.borderWidth
-
-                borderGlow:
-                    root.borderGlow
-
-                interactive: false
-
-                Item {
-                    anchors.fill: parent
-
-                    anchors.margins:
-                        root.padding
-
-                    clip: true
-
-                    Loader {
-                        id: submenuLoader
-
-                        anchors.fill:
-                            parent
-
-                        asynchronous: true
-
-                        onLoaded: {
-                            if (!item)
-                                return
-
-                            surface.prepareContent(
-                                item
-                            )
-                        }
-                    }
-                }
-            }
-
-            Timer {
-                id: destroyTimer
-
-                interval:
-                    root.animationDuration
-
-                repeat: false
-
-                onTriggered: {
-                    root._removeSubmenuSurface(
-                        surface
+                const mapped =
+                    parentObject.mapToItem(
+                        root,
+                        0,
+                        0
                     )
 
-                    surface.destroy()
+                const rightX =
+                    mapped.x +
+                    parentObject.width +
+                    root.submenuGap
+
+                const leftX =
+                    mapped.x -
+                    level.width -
+                    root.submenuGap
+
+                let px
+
+                /*
+                 * Prefer right.
+                 *
+                 * If right does not fit,
+                 * use left.
+                 */
+                if (
+                    rightX +
+                        level.width +
+                        root.screenMargin <=
+                    root.width
+                ) {
+                    px =
+                        rightX
+                } else {
+                    px =
+                        leftX
                 }
+
+                let py =
+                    mapped.y
+
+                /*
+                 * Keep the submenu attached to the parent
+                 * vertically, then clamp it to the screen.
+                 */
+                root.clampPosition(
+                    level,
+                    px,
+                    py
+                )
             }
 
+            function snapPosition() {
+                level.animatePosition =
+                    false
+
+                /*
+                 * x/y already contain the final position.
+                 *
+                 * Nothing is animated here.
+                 */
+            }
+
+            function openVisible() {
+                /*
+                 * The level is already positioned.
+                 */
+                level.animatePosition =
+                    false
+
+                level.opened =
+                    true
+
+                level.opacity =
+                    1
+
+                /*
+                 * Only size/opacity are animated.
+                 */
+            }
+
+            function closeVisible() {
+                level.opened =
+                    false
+
+                level.opacity =
+                    0
+            }
+
+            // ----------------------------------------------------
+            // ANIMATION
+            // ----------------------------------------------------
+
+            property bool animatePosition:
+                false
+
             Behavior on x {
+                enabled:
+                    level.animatePosition
+
                 NumberAnimation {
                     duration:
-                        root.animationDuration
+                        root.positionAnimationDuration
 
                     easing.type:
                         Easing.OutCubic
@@ -1484,9 +1026,12 @@ Item {
             }
 
             Behavior on y {
+                enabled:
+                    level.animatePosition
+
                 NumberAnimation {
                     duration:
-                        root.animationDuration
+                        root.positionAnimationDuration
 
                     easing.type:
                         Easing.OutCubic
@@ -1526,56 +1071,264 @@ Item {
     }
 
     // ============================================================
-    // CLEANUP TIMERS
+    // TREE BINDING
     // ============================================================
 
-    Timer {
-        id: replacementCleanupTimer
+    function bindTree(
+        item,
+        depth,
+        parentObject
+    ) {
+        if (!item)
+            return
 
-        interval:
-            root.animationDuration
+        /*
+         * ContextMenuObj exposes contextMenuInstance.
+         */
+        if (
+            item.contextMenuInstance !==
+            undefined
+        ) {
+            item.contextMenuInstance =
+                root
 
-        repeat: false
+            item.contextMenuDepth =
+                depth
 
-        onTriggered:
-            root._finishReplacement()
-    }
+            item.parentMenuObject =
+                parentObject || null
+        }
 
-    Timer {
-        id: closeCleanupTimer
+        /*
+         * Recurse into arbitrary QML content.
+         */
+        const children =
+            item.children
 
-        interval:
-            root.animationDuration
+        if (!children)
+            return
 
-        repeat: false
+        for (
+            let i = 0;
+            i < children.length;
+            ++i
+        ) {
+            const child =
+                children[i]
 
-        onTriggered: {
-            contentLoaderA.sourceComponent = null
-            contentLoaderB.sourceComponent = null
+            if (!child)
+                continue
 
-            contentLoaderA.opacity = 0
-            contentLoaderB.opacity = 0
+            const nextParent =
+                child.contextMenuInstance !==
+                    undefined
+                    ? child
+                    : parentObject
 
-            root._requestedComponent = null
-
-            root.opened = false
-            root._opening = false
-            root._closing = false
-
-            root._targetWidth = 0
-            root._targetHeight = 0
-
-            menuShell.opacity = 0
+            root.bindTree(
+                child,
+                depth,
+                nextParent
+            )
         }
     }
 
     // ============================================================
-    // DEBUG
+    // MEASUREMENT
     // ============================================================
 
-    Component.onCompleted: {
-        console.log(
-            "[ContextMenu] created"
-        )
+    function measureWidth(item) {
+        if (!item)
+            return root.minimumWidth
+
+        if (
+            item.naturalWidth !==
+                undefined
+        ) {
+            const value =
+                Number(
+                    item.naturalWidth
+                )
+
+            if (
+                Number.isFinite(value) &&
+                value > 0
+            ) {
+                return value
+            }
+        }
+
+        if (
+            item.width !==
+                undefined &&
+            Number(item.width) > 0
+        ) {
+            return Number(
+                item.width
+            )
+        }
+
+        if (
+            item.childrenRect &&
+            Number(
+                item.childrenRect.width
+            ) > 0
+        ) {
+            return Number(
+                item.childrenRect.width
+            )
+        }
+
+        return root.minimumWidth
+    }
+
+    function measureHeight(item) {
+        if (!item)
+            return 1
+
+        if (
+            item.naturalHeight !==
+                undefined
+        ) {
+            const value =
+                Number(
+                    item.naturalHeight
+                )
+
+            if (
+                Number.isFinite(value) &&
+                value > 0
+            ) {
+                return value
+            }
+        }
+
+        if (
+            item.height !==
+                undefined &&
+            Number(item.height) > 0
+        ) {
+            return Number(
+                item.height
+            )
+        }
+
+        if (
+            item.childrenRect &&
+            Number(
+                item.childrenRect.height
+            ) > 0
+        ) {
+            return Number(
+                item.childrenRect.height
+            )
+        }
+
+        return 1
+    }
+
+    // ============================================================
+    // POSITION CLAMP
+    // ============================================================
+
+    function clampPosition(
+        level,
+        px,
+        py
+    ) {
+        px =
+            Math.max(
+                root.screenMargin,
+
+                Math.min(
+                    px,
+
+                    Math.max(
+                        root.screenMargin,
+
+                        root.width -
+                            level.width -
+                            root.screenMargin
+                    )
+                )
+            )
+
+        py =
+            Math.max(
+                root.screenMargin,
+
+                Math.min(
+                    py,
+
+                    Math.max(
+                        root.screenMargin,
+
+                        root.height -
+                            level.height -
+                            root.screenMargin
+                    )
+                )
+            )
+
+        level.x =
+            px
+
+        level.y =
+            py
+    }
+
+    // ============================================================
+    // CLOSE FINALIZATION
+    // ============================================================
+
+    Timer {
+        id: closeTimer
+
+        interval:
+            root.animationDuration + 25
+
+        repeat:
+            false
+
+        onTriggered: {
+            if (root.menuOpen)
+                return
+
+            for (
+                let i = 0;
+                i < root.maxDepth;
+                ++i
+            ) {
+                const level =
+                    root.levelAt(i)
+
+                if (!level)
+                    continue
+
+                level.loader.sourceComponent =
+                    null
+
+                level.currentComponent =
+                    null
+
+                level.opened =
+                    false
+
+                level.opacity =
+                    0
+            }
+
+            root.submenuPinned =
+                []
+
+            root.parentHovered =
+                []
+
+            root.submenuHovered =
+                []
+
+            root.submenuParents =
+                []
+        }
     }
 }

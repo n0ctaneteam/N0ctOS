@@ -13,9 +13,9 @@ Item {
     anchors.fill: parent
 
     WidgetLayer {
-        // isDebug:true
+        isDebug:true
         editMode: true
-        screen: modelData
+        _screen: root.screen
         WlrLayershell.layer:
             WlrLayer.Background
     } 
@@ -23,6 +23,7 @@ Item {
     ScreenFrame {
         id: frame
 
+        screen: root.screen
         frameLayer: WlrLayer.Bottom
         frameWidth: 5
         frameColor: "#01080c"
