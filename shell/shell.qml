@@ -3,6 +3,7 @@ import Quickshell
 
 import qs.desktop
 import qs.wallpaper
+import qs.core.ui
 
 ShellRoot {
     id: root

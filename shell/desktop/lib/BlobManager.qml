@@ -23,20 +23,26 @@ Singleton {
         right: []
     })
 
+    // Configurable routing for IPC calls — persisted at blobs.targetScreen
+    // Values: "primary" (ScreenManager.primaryScreen) | "cursor" (monitor under cursor)
+    property string targetScreen: "primary"
+
     readonly property string activeConfigPath: _activePath
 
     property string _activePath: ""
     property var _configData: ({})
     property var _jobs: []
+    property bool saving: false
 
     function loadConfig() {
         console.log("[BlobManager] loadConfig()")
         console.log("[BlobManager] paths:", JSON.stringify(configPaths))
 
-        _jobs.forEach(j => j.destroy())
+        // Cancel pending reads: clear _jobs without destroying stale objects
+        // (destroying already-destroyed objects emits WARN). Stale FileViews
+        // will self-destroy in _configLoaded/_configFailed when they complete.
         _jobs = []
-        _activePath = ""
-        _configData = ({})
+        if (!_activePath) _configData = ({})
 
         _tryConfig(0)
     }
@@ -72,12 +78,20 @@ Singleton {
     }
 
     function _configLoaded(file) {
+        // Ignore stale loads (loadConfig was called again before this completed)
+        if (_jobs.indexOf(file) === -1) {
+            file.destroy()
+            return
+        }
+        const idx = _jobs.indexOf(file)
+        if (idx !== -1) _jobs.splice(idx, 1)
+
         const path = file.configPath
 
         try {
             const text = file.text()
             console.log("[BlobManager] loaded:", path)
-            console.log("[BlobManager] raw:", text)
+            // console.log("[BlobManager] raw:", text)
 
             const data = JSON.parse(text)
 
@@ -105,8 +119,23 @@ Singleton {
 
             blobs = next
 
+            // blobs.targetScreen — "primary" (default) | "cursor"
+            const rawTarget = data.blobs.targetScreen
+            if (typeof rawTarget === "string") {
+                const v = rawTarget.trim().toLowerCase()
+                if (v === "cursor" || v === "primary") {
+                    if (root.targetScreen !== v) root.targetScreen = v
+                } else {
+                    console.warn("[BlobManager] unknown blobs.targetScreen:", rawTarget, "-> fallback to primary")
+                    if (root.targetScreen !== "primary") root.targetScreen = "primary"
+                }
+            } else {
+                if (root.targetScreen !== "primary") root.targetScreen = "primary"
+            }
+
             console.log("[BlobManager] ACTIVE:", path)
             console.log("[BlobManager] BLOBS:", JSON.stringify(blobs))
+            console.log("[BlobManager] targetScreen:", root.targetScreen)
 
             file.destroy()
         } catch (e) {
@@ -122,6 +151,13 @@ Singleton {
     }
 
     function _configFailed(file, error) {
+        if (_jobs.indexOf(file) === -1) {
+            file.destroy()
+            return
+        }
+        const idx = _jobs.indexOf(file)
+        if (idx !== -1) _jobs.splice(idx, 1)
+
         console.warn(
             "[BlobManager] config read failed:",
             file.configPath,
@@ -169,6 +205,24 @@ Singleton {
         save()
     }
 
+    function normalizeTargetScreen(value) {
+        const v = String(value || "").trim().toLowerCase()
+        if (v === "cursor" || v === "primary") return v
+        return ""
+    }
+
+    function setTargetScreen(value) {
+        const v = normalizeTargetScreen(value)
+        if (!v) {
+            console.warn("[BlobManager] invalid targetScreen:", value)
+            return false
+        }
+        if (root.targetScreen === v) return true
+        root.targetScreen = v
+        save()
+        return true
+    }
+
     function save() {
         if (!_activePath) {
             console.warn("[BlobManager] save skipped: no active config")
@@ -185,7 +239,8 @@ Singleton {
             bl: blobs.bl,
             bc: blobs.bc,
             left: blobs.left,
-            right: blobs.right
+            right: blobs.right,
+            targetScreen: root.targetScreen
         }
 
         const f = writerComponent.createObject(root, {
@@ -202,6 +257,7 @@ Singleton {
         console.log("[BlobManager] saving:", _activePath)
         console.log("[BlobManager] new blob config:", JSON.stringify(data.blobs))
 
+        root.saving = true
         f.setText(text)
     }
 
@@ -237,13 +293,49 @@ Singleton {
 
             onSaved: {
                 console.log("[BlobManager] saved:", path)
+                root.saving = false
                 destroy()
             }
 
             onSaveFailed: function(error) {
                 console.warn("[BlobManager] save failed:", path, "|", error)
+                root.saving = false
                 destroy()
             }
+        }
+    }
+
+    // Hot-reload watchers — picks up external edits to blobs.targetScreen without reboot
+    // Watch both possible config locations; either edit hot-reloads.
+    FileView {
+        id: shellWatcher
+        path: Quickshell.shellPath("config.json")
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        onFileChanged: {
+            if (root.saving) {
+                console.log("[BlobManager] shell file changed (own save), ignoring")
+                return
+            }
+            console.log("[BlobManager] shell config changed externally, reloading")
+            root.loadConfig()
+        }
+    }
+
+    FileView {
+        id: stateWatcher
+        path: Quickshell.statePath("config.json")
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        onFileChanged: {
+            if (root.saving) {
+                console.log("[BlobManager] state file changed (own save), ignoring")
+                return
+            }
+            console.log("[BlobManager] state config changed externally, reloading")
+            root.loadConfig()
         }
     }
 
@@ -254,5 +346,9 @@ Singleton {
 
     onBlobsChanged: {
         console.log("[BlobManager] blobsChanged:", JSON.stringify(blobs))
+    }
+
+    onTargetScreenChanged: {
+        console.log("[BlobManager] targetScreenChanged:", targetScreen)
     }
 }

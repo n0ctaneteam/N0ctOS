@@ -3,6 +3,16 @@
         "name": "default"
     },
     "blobs": {
+        "tr": [
+            "launcher"
+        ],
+        "tl": [
+            "clock",
+            "cpu"
+        ],
+        "tc": [
+            "cpu"
+        ],
         "br": [
             "clock"
         ],
@@ -15,16 +25,6 @@
             "cpu",
             "clock"
         ],
-        "tr": [
-            "launcher"
-        ],
-        "tl": [
-            "clock",
-            "cpu"
-        ],
-        "tc": [
-            "cpu"
-        ],
         "left": [
             "clock",
             "launcher"
@@ -32,7 +32,8 @@
         "right": [
             "launcher",
             "clock"
-        ]
+        ],
+        "targetScreen": "cursor"
     },
     "blobSwitch": {
         "modifier": "Super",
@@ -42,7 +43,7 @@
     "wallpaper": {
         "monitors": {
             "eDP-1": {
-                "source": "/home/n0ctanedev/Downloads/galaxy-eyes.1920x1080.mp4",
+                "source": "/home/n0ctanedev/Downloads/midnight-skyline.1920x1080.mp4",
                 "type": "video",
                 "fitting": "crop"
             },
@@ -62,7 +63,7 @@
         "foo": true
     },
     "screens": [
-        "HDMI-A-1",
-        "eDP-1"
+        "eDP-1",
+        "HDMI-A-1"
     ]
 }

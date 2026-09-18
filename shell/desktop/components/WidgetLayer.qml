@@ -7,6 +7,7 @@ import Quickshell.Wayland
 import qs.desktop.components
 import qs.desktop.lib
 import qs.core.ui
+import qs.core.lib
 
 PanelWindow {
     id: root
@@ -171,25 +172,6 @@ PanelWindow {
     // CONTEXT MENU
     // ============================================================
 
-    ContextMenu {
-        id: contextMenu
-
-        anchors.fill:
-            parent
-
-        z:
-            50000
-
-        outsideClickCloses:
-            true
-    }
-
-    /*
-     * Right-click only on empty WidgetLayer space.
-     *
-     * The menu itself passively tracks the cursor, so the caller
-     * does not have to provide a position.
-     */
     MouseArea {
         id: contextMenuMouseArea
 
@@ -197,7 +179,7 @@ PanelWindow {
             widgetRoot
 
         enabled:
-            !contextMenu.menuOpen
+            !ContextMenu.isOpen
 
         acceptedButtons:
             Qt.RightButton
@@ -206,14 +188,17 @@ PanelWindow {
             -90
 
         onPressed: {
-            if (root.editMode)
-                contextMenu.open(
-                    editContextMenu
-                )
-            else
-                contextMenu.open(
-                    runtimeContextMenu
-                )
+            ContextMenuInput.updatePointer(
+                root,
+                mouse.x,
+                mouse.y
+            )
+
+            ContextMenu.open(
+                root.editMode
+                    ? editContextMenu
+                    : runtimeContextMenu
+            )
 
             mouse.accepted =
                 true
@@ -1304,9 +1289,7 @@ PanelWindow {
          */
         const yValues = [
             origin.y,
-
             blocker.y,
-
             blocker.y +
                 blocker.height -
                 height
@@ -1314,9 +1297,7 @@ PanelWindow {
 
         const xValues = [
             origin.x,
-
             blocker.x,
-
             blocker.x +
                 blocker.width -
                 width
@@ -2003,38 +1984,38 @@ PanelWindow {
                 // =================================================
                 // SELECTED SHADOW
                 // =================================================
-                
+
                 RectangularShadow {
                     visible:
                         root.editMode &&
                         delegate.instanceId ===
                             root.selectedInstanceId
-                
+
                     anchors.centerIn:
                         parent
-                
+
                     width:
                         parent.width +
                         root.selectedShadowSize * 2
-                
+
                     height:
                         parent.height +
                         root.selectedShadowSize * 2
-                
+
                     radius: 7
-                
+
                     color:
                         root.selectedShadowColor
-                
+
                     blur:
                         root.selectedShadowBlur
-                
+
                     spread:
                         root.selectedShadowSize
-                
+
                     opacity:
                         root.selectedShadowOpacity
-                
+
                     z: -100
                 }
 

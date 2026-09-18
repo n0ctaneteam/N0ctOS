@@ -209,6 +209,52 @@ Scope {
     readonly property var moduleRegistry: ModuleRegistry
     readonly property var blobManager: BlobManager
     readonly property var serviceManager: ServiceManager
+
+    // Per-screen IPC registration — tracks which screen we registered
+    property string _registeredScreenName: ""
+
+    function _blobMap() {
+        // Note: blob objects are created inside frameWindow; ids are
+        // globally addressable after construction.
+        return {
+            tr: trBlobContent,
+            tl: tlBlobContent,
+            tc: tcBlobContent,
+            br: brBlobContent,
+            bl: blBlobContent,
+            bc: bcBlobContent,
+            left: leftBlobContent,
+            right: rightBlobContent
+        }
+    }
+
+    function _registerBlobs() {
+        const name = root.screen ? root.screen.name : ""
+        if (!name) {
+            console.warn("[ScreenFrame] _registerBlobs: missing screen name")
+            return
+        }
+        if (root._registeredScreenName && root._registeredScreenName !== name) {
+            BlobIPCHandler.unregisterScreen(root._registeredScreenName)
+        }
+        root._registeredScreenName = name
+        BlobIPCHandler.registerScreen(name, root._blobMap())
+        console.log("[ScreenFrame] BlobIPCHandler registered:", name)
+    }
+
+    onScreenChanged: {
+        if (root.screen && root.screen.name) {
+            console.log("[ScreenFrame] screen changed:", root.screen.name)
+            root._registerBlobs()
+        }
+    }
+
+    Component.onDestruction: {
+        if (root._registeredScreenName) {
+            console.log("[ScreenFrame] unregister:", root._registeredScreenName)
+            BlobIPCHandler.unregisterScreen(root._registeredScreenName)
+        }
+    }
     
     // ============================================================
     // VALUE HELPERS
@@ -2352,29 +2398,21 @@ Scope {
         }
 
         // ==================================
-        // =======   DEBUG LOGGING   ========
+        // =======   IPC REGISTRATION   ========
         // ==================================
         Component.onCompleted: {
             console.log("========== N0CTOS ==========")
             console.log("[Shell] started")
-            // Singleton-safe logging (aliases kept at root for compat, direct singleton preferred)
             console.log("[Shell] module paths:", JSON.stringify(ModuleRegistry.searchPaths))
             console.log("[Shell] config paths:", JSON.stringify(BlobManager.configPaths))
+            console.log("[Shell] screen:", root.screen ? root.screen.name : "(null)")
             console.log("============================")
-            // Wire IPC handler to actual Blob instances (singleton-safe).
-            // Runs per-screen; last screen wins — safe for single-monitor setups.
-            // Future multi-screen registry can extend this to per-screen map.
-            BlobIPCHandler.blobs = {
-                tr: trBlobContent,
-                tl: tlBlobContent,
-                tc: tcBlobContent,
-                br: brBlobContent,
-                bl: blBlobContent,
-                bc: bcBlobContent,
-                left: leftBlobContent,
-                right: rightBlobContent
-            }
-            console.log("[Shell] BlobIPCHandler wired:", JSON.stringify(Object.keys(BlobIPCHandler.blobs)))
+            // Per-screen registration — replaces old last-wins BlobIPCHandler.blobs
+            // Use callLater to ensure all Blob items are constructed.
+            Qt.callLater(function() {
+                root._registerBlobs()
+                console.log("[Shell] BlobIPCHandler wired for", root._registeredScreenName, ":", JSON.stringify(Object.keys(root._blobMap())))
+            })
         }
     }
 }
