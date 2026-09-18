@@ -236,7 +236,7 @@ Item {
 
             z: 10
 
-            onPressed: {
+            onPressed: function(mouse) {
                 const p =
                     root.pointerInTarget(
                         dragArea,
@@ -254,7 +254,7 @@ Item {
                 mouse.accepted = true
             }
 
-            onPositionChanged: {
+            onPositionChanged: function(mouse) {
                 if (!pressed)
                     return
 
@@ -404,7 +404,7 @@ Item {
                 cursorShape:
                     modelData.cursor
 
-                onPressed: {
+                onPressed: function(mouse) {
                     const p =
                         root.pointerInTarget(
                             handleMouse,
@@ -423,7 +423,7 @@ Item {
                     mouse.accepted = true
                 }
 
-                onPositionChanged: {
+                onPositionChanged: function(mouse) {
                     if (!pressed)
                         return
 

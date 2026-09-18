@@ -293,7 +293,7 @@ Module {
 
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: {
+                    onClicked: function(mouse) {
                         root.selectedIndex = modelData
                         root.launchSelected()
                     }

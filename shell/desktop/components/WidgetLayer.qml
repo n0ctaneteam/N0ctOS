@@ -187,7 +187,7 @@ PanelWindow {
         z:
             -90
 
-        onPressed: {
+        onPressed: function(mouse) {
             ContextMenu.updatePointer(
                 root,
                 mouse.x,
@@ -1811,7 +1811,7 @@ PanelWindow {
 
             z: -100
 
-            onPressed: {
+            onPressed: function(mouse) {
                 root.clearSelection()
                 mouse.accepted = true
             }
@@ -2477,7 +2477,7 @@ PanelWindow {
         borderWidth: 1
         borderGlow: root.editMode ? 8 : 0
         cut: ({ topLeft: 8, topRight: 8, bottomRight: 8, bottomLeft: 8 })
-        onClicked: {
+        onClicked: function(mouse) {
             console.log("[WidgetLayer] editModeToggle clicked, before:", root.editMode)
             root.editMode = !root.editMode
             console.log("[WidgetLayer] editMode now:", root.editMode)

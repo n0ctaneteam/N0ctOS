@@ -94,7 +94,7 @@ Widget {
         acceptedButtons:
             Qt.LeftButton
 
-        onClicked: {
+        onClicked: function(mouse) {
             root.colorIndex =
                 (
                     root.colorIndex + 1

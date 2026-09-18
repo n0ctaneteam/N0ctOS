@@ -461,10 +461,10 @@ CutBox {
             if (!item)
                 return
 
-            if (item.widget === undefined)
+            if ("widget" in item)
                 item.widget = root
 
-            if (item.parentWidget === undefined)
+            if ("parentWidget" in item)
                 item.parentWidget = root
         }
     }

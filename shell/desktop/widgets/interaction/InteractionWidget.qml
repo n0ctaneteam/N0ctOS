@@ -86,7 +86,7 @@ Widget {
             MouseArea {
                 anchors.fill: parent
 
-                onClicked: {
+                onClicked: function(mouse) {
                     root.clicks++
                 }
             }
