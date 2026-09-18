@@ -13,7 +13,7 @@ Item {
     anchors.fill: parent
 
     WidgetLayer {
-        isDebug:true
+        // isDebug:true
         editMode: true
         _screen: root.screen
         WlrLayershell.layer:

@@ -7,7 +7,7 @@ import qs.wallpaper.lib
 PanelWindow {
     id: root
 
-    property bool isDebug: true
+    property bool isDebug: false
 
     property var definition:
         WallpaperManager.definitionFor(root.screen)

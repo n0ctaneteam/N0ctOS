@@ -188,7 +188,7 @@ PanelWindow {
             -90
 
         onPressed: {
-            ContextMenuInput.updatePointer(
+            ContextMenu.updatePointer(
                 root,
                 mouse.x,
                 mouse.y
@@ -2459,177 +2459,257 @@ PanelWindow {
     }
 
     // ============================================================
-    // RUNTIME MENU
+    // EDIT MODE TOGGLE — always visible, CutBox reuse
+    // ============================================================
+
+    CutBox {
+        id: editModeToggle
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: 12
+        anchors.rightMargin: 12
+        width: 148
+        height: 36
+        z: 5000
+        interactive: true
+        bgColor: root.editMode ? "#1a3039" : "#0b1117"
+        borderColor: root.editMode ? "#2acfff" : "#273944"
+        borderWidth: 1
+        borderGlow: root.editMode ? 8 : 0
+        cut: ({ topLeft: 8, topRight: 8, bottomRight: 8, bottomLeft: 8 })
+        onClicked: {
+            console.log("[WidgetLayer] editModeToggle clicked, before:", root.editMode)
+            root.editMode = !root.editMode
+            console.log("[WidgetLayer] editMode now:", root.editMode)
+        }
+        Text {
+            anchors.centerIn: parent
+            text: root.editMode ? "󰌑  Exit Edit" : "󰌑  Enter Edit"
+            color: root.editMode ? "#2acfff" : "#e8edf0"
+            font.family: "Symbols Nerd Font"
+            font.pixelSize: 12
+        }
+    }
+
+    // ============================================================
+    // RUNTIME MENU — showcase: mandatory Obj, children, nested, 90% + fade
     // ============================================================
 
     Component {
         id: runtimeContextMenu
-
         Column {
-            width: 230
+            width: 260
             spacing: 0
 
+            // header — disabled info
             ContextMenuObj {
-                text:
-                    "󰌑  Enter Edit Mode"
-
-                functionAction:
-                    function() {
-                        root.editMode =
-                            true
-                    }
+                text: "󰇄  Desktop  •  " + root.screenName
+                enabled: false
             }
 
             ContextMenuObj {
-                text:
-                    "󰑓  Reload Widgets"
+                text: "󰌑  Enter Edit Mode"
+                functionAction: function() {
+                    console.log("[WidgetLayer][Runtime] Enter Edit Mode")
+                    root.editMode = true
+                }
+            }
 
-                functionAction:
-                    function() {
-                        root.reloadWidgets()
-                    }
+            // showcase: parent with left-aligned children below text
+            ContextMenuObj {
+                text: "󰚟  Showcase — children below"
+                // children are left-aligned below header, per spec
+                ContextMenuObj { text: "  󰀻  Child A — left aligned"; functionAction: function(){ console.log("[Runtime] Child A") } }
+                ContextMenuObj { text: "  󰀻  Child B — left aligned"; functionAction: function(){ console.log("[Runtime] Child B") } }
             }
 
             ContextMenuObj {
-                text:
-                    "󰈙  Widget Tools"
-
-                submenu:
-                    runtimeToolsMenu
+                text: "󰐕  Add Widget  — scroll/fade demo"
+                submenu: widgetAddMenu
             }
 
             ContextMenuObj {
-                text:
-                    "󰈆  Close"
+                text: "󰈙  Tools  — nested (no limit)"
+                submenu: runtimeToolsMenu
+            }
+
+            ContextMenuObj {
+                text: "󰦚  Deep Nest — 4 levels"
+                submenu: deepLevel1
+            }
+
+            ContextMenuObj {
+                text: "󰑓  Reload Widgets"
+                functionAction: function() {
+                    console.log("[WidgetLayer][Runtime] Reload")
+                    root.reloadWidgets()
+                }
+            }
+
+            ContextMenuObj {
+                text: "󰈆  Close"
+                closeOnClick: true
             }
         }
     }
 
-    // ============================================================
-    // RUNTIME SUBMENU
-    // ============================================================
+    Component {
+        id: widgetAddMenu
+        Column {
+            width: 260
+            spacing: 0
+            // many items to force 90% clamp + vertical fade
+            ContextMenuObj { text: "󰃭  Clock"; functionAction: function(){ console.log("[Add] Clock") } }
+            ContextMenuObj { text: "󰻠  CPU"; functionAction: function(){ console.log("[Add] CPU") } }
+            ContextMenuObj { text: "󰖟  Weather"; functionAction: function(){ console.log("[Add] Weather") } }
+            ContextMenuObj { text: "󰋩  Music"; functionAction: function(){ console.log("[Add] Music") } }
+            ContextMenuObj { text: "󰎄  Calendar"; functionAction: function(){ console.log("[Add] Calendar") } }
+            ContextMenuObj { text: "󰞉  System"; functionAction: function(){ console.log("[Add] System") } }
+            ContextMenuObj { text: "󰇮  Network"; functionAction: function(){ console.log("[Add] Network") } }
+            ContextMenuObj { text: "󰋜  Battery"; functionAction: function(){ console.log("[Add] Battery") } }
+            ContextMenuObj { text: "󰓇  Volume"; functionAction: function(){ console.log("[Add] Volume") } }
+            ContextMenuObj { text: "󰍹  Brightness"; functionAction: function(){ console.log("[Add] Brightness") } }
+            ContextMenuObj { text: "󰀻  Launcher"; functionAction: function(){ console.log("[Add] Launcher") } }
+            ContextMenuObj { text: "󰣖  Notes"; functionAction: function(){ console.log("[Add] Notes") } }
+            ContextMenuObj { text: "󰟶  Todo"; functionAction: function(){ console.log("[Add] Todo") } }
+            ContextMenuObj { text: "󰷈  Stocks"; functionAction: function(){ console.log("[Add] Stocks") } }
+            ContextMenuObj { text: "󰨇  Gallery"; functionAction: function(){ console.log("[Add] Gallery") } }
+            ContextMenuObj { text: "󰨞  Terminal"; functionAction: function(){ console.log("[Add] Terminal") } }
+            ContextMenuObj { text: "󰆍  Files"; functionAction: function(){ console.log("[Add] Files") } }
+            ContextMenuObj { text: "󰊻  Browser"; functionAction: function(){ console.log("[Add] Browser") } }
+            ContextMenuObj { text: "󰢻  Chat"; functionAction: function(){ console.log("[Add] Chat") } }
+            ContextMenuObj { text: "󰚰  Map"; functionAction: function(){ console.log("[Add] Map") } }
+            // horizontal overflow demo — very long text forces 90% width + horizontal fade
+            ContextMenuObj { text: "󰹑  Super long widget name that exceeds 90% width and should trigger horizontal fade — " + "x".repeat(40) }
+        }
+    }
 
     Component {
         id: runtimeToolsMenu
-
         Column {
-            width: 230
+            width: 240
             spacing: 0
-
+            ContextMenuObj { text: "󰐕  Add Widget"; submenu: widgetAddMenu }
+            ContextMenuObj { text: "󰋊  Presets"; submenu: presetsMenu }
             ContextMenuObj {
-                text:
-                    "󰐕  Add Widget"
-
-                functionAction:
-                    function() {
-                        console.log(
-                            "[WidgetLayer] Add Widget requested"
-                        )
-                    }
-            }
-
-            ContextMenuObj {
-                text:
-                    "󰋊  Presets"
-
-                functionAction:
-                    function() {
-                        console.log(
-                            "[WidgetLayer] Presets requested"
-                        )
-                    }
+                text: "󰦪  Actions with children"
+                ContextMenuObj { text: "  󰄬  Child action 1" }
+                ContextMenuObj { text: "  󰄬  Child action 2" }
             }
         }
     }
 
+    Component {
+        id: presetsMenu
+        Column {
+            width: 220
+            spacing: 0
+            ContextMenuObj { text: "󰀻  Minimal" }
+            ContextMenuObj { text: "󰀻  Gaming"; submenu: deepLevel1 }
+            ContextMenuObj { text: "󰀻  Work" }
+        }
+    }
+
+    Component { id: deepLevel1; Column { width: 220; spacing:0
+        ContextMenuObj { text: "󰆍  Level 1 — A"; submenu: deepLevel2 }
+        ContextMenuObj { text: "󰆍  Level 1 — B" }
+    }}
+    Component { id: deepLevel2; Column { width: 220; spacing:0
+        ContextMenuObj { text: "󰆍  Level 2 — A"; submenu: deepLevel3 }
+        ContextMenuObj { text: "󰆍  Level 2 — B" }
+    }}
+    Component { id: deepLevel3; Column { width: 220; spacing:0
+        ContextMenuObj { text: "󰆍  Level 3 — A"; submenu: deepLevel4 }
+        ContextMenuObj { text: "󰆍  Level 3 — B" }
+    }}
+    Component { id: deepLevel4; Column { width: 220; spacing:0
+        ContextMenuObj { text: "󰄾  Level 4 — end (no limit demo)" }
+        ContextMenuObj { text: "󰄾  Back to root"; submenu: deepLevel1 }
+    }}
+
     // ============================================================
-    // EDIT MENU
+    // EDIT MENU — showcase + edit-specific
     // ============================================================
 
     Component {
         id: editContextMenu
-
         Column {
-            width: 230
+            width: 260
             spacing: 0
 
             ContextMenuObj {
-                text:
-                    "󰌑  Exit Edit Mode"
-
-                functionAction:
-                    function() {
-                        root.editMode =
-                            false
-                    }
+                text: "󰌑  Exit Edit Mode"
+                functionAction: function() {
+                    console.log("[WidgetLayer][Edit] Exit Edit Mode")
+                    root.editMode = false
+                }
             }
 
             ContextMenuObj {
-                text:
-                    "󰐕  Add Widget"
-
-                functionAction:
-                    function() {
-                        console.log(
-                            "[WidgetLayer] Add Widget requested"
-                        )
-                    }
+                text: "󰐕  Add Widget  — scroll/fade demo"
+                submenu: widgetAddMenu
             }
 
             ContextMenuObj {
-                text:
-                    "󰈙  Widget Tools"
-
-                submenu:
-                    editToolsMenu
+                text: "󰦪  Layer Tools"
+                submenu: editToolsMenu
             }
 
             ContextMenuObj {
-                text:
-                    "󰅖  Clear Selection"
+                text: "󰅖  Clear Selection"
+                enabled: root.selectedInstanceId !== ""
+                functionAction: function() {
+                    console.log("[WidgetLayer][Edit] Clear Selection", root.selectedInstanceId)
+                    root.clearSelection()
+                }
+            }
 
-                functionAction:
-                    function() {
-                        root.clearSelection()
-                    }
+            // showcase selected widget with children
+            ContextMenuObj {
+                text: "󰄭  Selection: " + (root.selectedInstanceId || "none")
+                enabled: false
+                // children show details left-aligned below header
+                ContextMenuObj { text: "  󰀻  ID: " + (root.selectedInstanceId || "—") ; enabled: false }
+                ContextMenuObj { text: "  󰀻  Tap to focus"; functionAction: function(){
+                    var d=root.findDelegate(root.selectedInstanceId); if(d&&d.widgetItem&&d.widgetItem.focusWidget) d.widgetItem.focusWidget()
+                }}
+            }
+
+            ContextMenuObj {
+                text: "󰦚  Deep Nest — edit"
+                submenu: deepLevel1
+            }
+
+            ContextMenuObj {
+                text: "󰈆  Close"
             }
         }
     }
 
-    // ============================================================
-    // EDIT SUBMENU
-    // ============================================================
-
     Component {
         id: editToolsMenu
-
         Column {
-            width: 230
+            width: 260
             spacing: 0
-
+            ContextMenuObj { text: "󰆏  Save Layout"; functionAction: function(){ console.log("[WidgetLayer][Edit] Save Layout") } }
+            ContextMenuObj { text: "󰉨  Save as Preset"; functionAction: function(){ console.log("[WidgetLayer][Edit] Save Preset") } }
+            ContextMenuObj { text: "󰒓  Widget Settings"; submenu: widgetSettingsMenu }
             ContextMenuObj {
-                text:
-                    "󰆏  Save Layout"
-
-                functionAction:
-                    function() {
-                        console.log(
-                            "[WidgetLayer] Save Layout requested"
-                        )
-                    }
+                text: "󰦪  Debug — toggle"
+                // showcase children
+                ContextMenuObj { text: "  󰀻  Debug: " + (root.isDebug ? "ON" : "OFF"); functionAction: function(){ root.isDebug = !root.isDebug; console.log("[WidgetLayer] isDebug", root.isDebug)} }
             }
+        }
+    }
 
-            ContextMenuObj {
-                text:
-                    "󰒓  Widget Settings"
-
-                functionAction:
-                    function() {
-                        console.log(
-                            "[WidgetLayer] Widget Settings requested"
-                        )
-                    }
-            }
+    Component {
+        id: widgetSettingsMenu
+        Column {
+            width: 240
+            spacing: 0
+            ContextMenuObj { text: "󰏃  Size: small"; functionAction: function(){ console.log("[WidgetLayer] size small") } }
+            ContextMenuObj { text: "󰏃  Size: large"; functionAction: function(){ console.log("[WidgetLayer] size large") } }
+            ContextMenuObj { text: "󰏃  Opacity"; submenu: deepLevel2 }
         }
     }
 

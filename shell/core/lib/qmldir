@@ -1,3 +1,4 @@
 module qs.core.lib
 
 singleton ScreenManager ScreenManager.qml
+singleton ContextMenu 1.0 ContextMenu.qml
