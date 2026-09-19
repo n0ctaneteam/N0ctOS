@@ -174,32 +174,23 @@ PanelWindow {
 
     MouseArea {
         id: contextMenuMouseArea
-
+    
         anchors.fill:
             widgetRoot
-
-        enabled:
-            !ContextMenu.isOpen
-
+    
+        enabled:true
+    
         acceptedButtons:
             Qt.RightButton
-
-        z:
-            -90
-
+    
+    
         onPressed: function(mouse) {
-            ContextMenu.updatePointer(
-                root,
-                mouse.x,
-                mouse.y
-            )
-
             ContextMenu.open(
                 root.editMode
                     ? editContextMenu
                     : runtimeContextMenu
             )
-
+    
             mouse.accepted =
                 true
         }
@@ -2498,7 +2489,6 @@ PanelWindow {
     Component {
         id: runtimeContextMenu
         Column {
-            width: 260
             spacing: 0
 
             // header — disabled info
@@ -2544,6 +2534,20 @@ PanelWindow {
                     console.log("[WidgetLayer][Runtime] Reload")
                     root.reloadWidgets()
                 }
+            }
+
+            ContextMenuObj {
+                text: "Custom"
+            
+                Rectangle {
+                    width: 100
+                    height: 20
+                }
+            
+                Text {
+                    text: "Hello"
+                }
+            
             }
 
             ContextMenuObj {
