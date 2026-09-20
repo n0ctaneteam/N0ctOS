@@ -2560,7 +2560,6 @@ PanelWindow {
     Component {
         id: widgetAddMenu
         Column {
-            width: 260
             spacing: 0
             // many items to force 90% clamp + vertical fade
             ContextMenuObj { text: "󰃭  Clock"; functionAction: function(){ console.log("[Add] Clock") } }
@@ -2584,14 +2583,13 @@ PanelWindow {
             ContextMenuObj { text: "󰢻  Chat"; functionAction: function(){ console.log("[Add] Chat") } }
             ContextMenuObj { text: "󰚰  Map"; functionAction: function(){ console.log("[Add] Map") } }
             // horizontal overflow demo — very long text forces 90% width + horizontal fade
-            ContextMenuObj { text: "󰹑  Super long widget name that exceeds 90% width and should trigger horizontal fade — " + "x".repeat(40) }
+            // ContextMenuObj { text: "󰹑  Super long widget name that exceeds 90% width and should trigger horizontal fade — " + "x".repeat(400) }
         }
     }
 
     Component {
         id: runtimeToolsMenu
         Column {
-            width: 240
             spacing: 0
             ContextMenuObj { text: "󰐕  Add Widget"; submenu: widgetAddMenu }
             ContextMenuObj { text: "󰋊  Presets"; submenu: presetsMenu }
@@ -2606,7 +2604,6 @@ PanelWindow {
     Component {
         id: presetsMenu
         Column {
-            width: 220
             spacing: 0
             ContextMenuObj { text: "󰀻  Minimal" }
             ContextMenuObj { text: "󰀻  Gaming"; submenu: deepLevel1 }
@@ -2614,19 +2611,19 @@ PanelWindow {
         }
     }
 
-    Component { id: deepLevel1; Column { width: 220; spacing:0
+    Component { id: deepLevel1; Column {spacing:0
         ContextMenuObj { text: "󰆍  Level 1 — A"; submenu: deepLevel2 }
         ContextMenuObj { text: "󰆍  Level 1 — B" }
     }}
-    Component { id: deepLevel2; Column { width: 220; spacing:0
+    Component { id: deepLevel2; Column {spacing:0
         ContextMenuObj { text: "󰆍  Level 2 — A"; submenu: deepLevel3 }
         ContextMenuObj { text: "󰆍  Level 2 — B" }
     }}
-    Component { id: deepLevel3; Column { width: 220; spacing:0
+    Component { id: deepLevel3; Column {spacing:0
         ContextMenuObj { text: "󰆍  Level 3 — A"; submenu: deepLevel4 }
         ContextMenuObj { text: "󰆍  Level 3 — B" }
     }}
-    Component { id: deepLevel4; Column { width: 220; spacing:0
+    Component { id: deepLevel4; Column {spacing:0
         ContextMenuObj { text: "󰄾  Level 4 — end (no limit demo)" }
         ContextMenuObj { text: "󰄾  Back to root"; submenu: deepLevel1 }
     }}
@@ -2638,7 +2635,6 @@ PanelWindow {
     Component {
         id: editContextMenu
         Column {
-            width: 260
             spacing: 0
 
             ContextMenuObj {
@@ -2693,7 +2689,6 @@ PanelWindow {
     Component {
         id: editToolsMenu
         Column {
-            width: 260
             spacing: 0
             ContextMenuObj { text: "󰆏  Save Layout"; functionAction: function(){ console.log("[WidgetLayer][Edit] Save Layout") } }
             ContextMenuObj { text: "󰉨  Save as Preset"; functionAction: function(){ console.log("[WidgetLayer][Edit] Save Preset") } }
@@ -2709,7 +2704,6 @@ PanelWindow {
     Component {
         id: widgetSettingsMenu
         Column {
-            width: 240
             spacing: 0
             ContextMenuObj { text: "󰏃  Size: small"; functionAction: function(){ console.log("[WidgetLayer] size small") } }
             ContextMenuObj { text: "󰏃  Size: large"; functionAction: function(){ console.log("[WidgetLayer] size large") } }
