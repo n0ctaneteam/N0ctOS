@@ -190,7 +190,7 @@ PanelWindow {
                     ? editContextMenu
                     : runtimeContextMenu
             )
-    
+
             mouse.accepted =
                 true
         }

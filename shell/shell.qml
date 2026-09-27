@@ -4,9 +4,14 @@ import Quickshell
 import qs.desktop
 import qs.wallpaper
 import qs.core.ui
+import qs.services 
 
 ShellRoot {
     id: root
+
+    ServiceHost {
+        id: serviceHost
+    }
 
     Variants {
         model: Quickshell.screens

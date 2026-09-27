@@ -20,17 +20,20 @@ Item {
             WlrLayer.Background
     } 
 
+    // NotiTest{}
+    // TrayTest{}
+    
     ScreenFrame {
         id: frame
 
         screen: root.screen
-        frameLayer: WlrLayer.Bottom
+        frameLayer: WlrLayer.Top
         frameWidth: 5
         frameColor: "#01080c"
         borderWidth: 2
         borderColor: "#2acfff"
-        blobAnimationDuration: 200
-        cut: 30
+        blobAnimationDuration: 300
+        round: 30
 
         shadows: ({
             intensity: 30,

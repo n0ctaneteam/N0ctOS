@@ -1,0 +1,21 @@
+module qs.services
+
+ServiceHost 1.0 ServiceHost.qml
+
+singleton ConfigStore 1.0 ConfigStore.qml
+singleton Config 1.0 Config.qml
+
+singleton DateTime 1.0 DateTime.qml
+singleton Screens 1.0 Screens.qml
+singleton Clipboard 1.0 Clipboard.qml
+singleton Power 1.0 Power.qml
+singleton Battery 1.0 Battery.qml
+singleton Brightness 1.0 Brightness.qml
+singleton Audio 1.0 Audio.qml
+singleton Network 1.0 Network.qml
+singleton Bluetooth 1.0 Bluetooth.qml
+singleton Media 1.0 Media.qml
+singleton Notifications 1.0 Notifications.qml
+singleton SystemTray 1.0 SystemTray.qml
+singleton Animations 1.0 Animations.qml
+

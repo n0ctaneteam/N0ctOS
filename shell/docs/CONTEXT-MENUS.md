@@ -220,34 +220,11 @@ while a menu is already open replaces the root menu content.
 
 The root menu is repositioned using the current cursor location.
 
-The first opening snaps into place.
+Every opening snaps into place: the tight host is parked at the computed menu origin.
 
-Subsequent root recalls use the configured position animation.
+There is no position animation on re-open; the menu repositions instantly.
 
-Conceptually:
-
-```text
-first open:
-
-cursor
-  │
-  ▼
-┌──────────┐
-│  Menu    │
-└──────────┘
-
-
-re-open:
-
-old position
-     ╲
-      ╲ animated movement
-       ╲
-        ▼
-     new position
-```
-
-Submenus do not use this position animation.
+Submenus do not use position animation either.
 
 ---
 
@@ -315,9 +292,11 @@ ContextMenu.open(
 )
 ```
 
-The Context Menu internally maintains separate `PanelWindow` hosts for the available Wayland layers.
+The Context Menu maintains a single menu-sized `PanelWindow` parked at the computed menu origin. It is never fullscreen, so it can never block underlying input: hover, clicks, scrolls and drags outside the menus pass through to whatever is below.
 
-This allows the active menu surface to be placed on the requested layer without changing the layer of a connected `PanelWindow`.
+Outside clicks never reach the shell (the window owns only menu pixels), so dismissal comes from: item activation, gap clicks inside the window, `Escape`, clicks on shell surfaces that snoop-and-release (e.g. WidgetLayer empty area), Hyprland `activewindow`-follow (focus moving to a client window closes the menu), or opening another menu (replaces content in place). Clicks landing on client-app windows are invisible to the shell, so the menu persists while you work below until one of the above dismisses it.
+
+The host layer is bound per `open()` call, so the menu surface lands on the requested layer without extra surfaces.
 
 ---
 
@@ -1184,7 +1163,9 @@ This prevents the menu from intentionally positioning itself underneath exclusiv
 
 The root menu initially attempts to open at the cursor.
 
-If there is not enough room to the right:
+The computed screen position flips to the left of the cursor when there is not enough room to the right, and upward when there is not enough room below. The result is then clamped to the usable area (compositor-reserved space + screen margin).
+
+That final position parks the tight host window; the root level always sits at the host origin.
 
 ```text
 cursor
@@ -1194,11 +1175,7 @@ cursor
 └───────────────┘
 ```
 
-it flips to the left of the cursor.
-
-Likewise, if there is not enough vertical room below the cursor, it flips upward.
-
-After flipping, the result is clamped to the usable area.
+Submenu side choice (prefer right, fall back left, clamp vertically) runs in host coordinates against the same usable-area bounds, and the tight host grows to fit the resulting union.
 
 ---
 
@@ -2034,47 +2011,15 @@ because Overlay is the default.
 
 ---
 
-# 50. Right-click recall
+# 50. Outside dismissal and re-open
 
-The Context Menu itself covers the target screen while open.
+The menu lives in a tight menu-sized host window, so outside clicks never reach the shell at all: the compositor routes them to the underlying window.
 
-Because of this, the underlying widget layer cannot receive another right-click directly.
+This means an outside click lands in the app underneath — and, where the click hits a shell surface with a menu handler (another widget, the tray), it opens that menu, replacing the current one in place. Right-clicking another item therefore swaps menus instead of stranding the old one.
 
-The singleton therefore has an internal right-click recall area.
+Clicks landing in the tiny gaps between menu levels hit a background catcher and close the menu. `Escape` also closes it. Clicks on client-app windows are invisible to the shell, so the menu stays up while you work below until item activation, a gap click, `Escape`, a shell-surface click, an `activewindow` focus change, or a fresh `open()` dismisses it.
 
-When a right-click occurs while the menu is open, it reuses:
-
-```qml
-requestedComponent
-```
-
-and:
-
-```qml
-requestedLayer
-```
-
-and performs another open request.
-
-This means:
-
-```text
-right-click
-    │
-    ▼
-menu already open?
-    │
-    ▼
-re-open same menu
-    │
-    ▼
-new cursor position
-    │
-    ▼
-root menu slides
-```
-
-This behavior is intentional.
+Calling `open()` while a menu is already open is still valid: content is replaced and the host re-parks at the new cursor position. Re-open repositions instantly.
 
 ---
 
@@ -2198,6 +2143,8 @@ and monitor information through:
 ```text
 hyprctl -j monitors
 ```
+
+These live behind the `cursorBackend` provider seam (`"hyprland"` for now). Future backends (niri, kde, ...) slot into `queryCursorAndMonitors()` without touching the open/resolve flow.
 
 The current cursor is matched against the monitor geometry.
 
@@ -2344,7 +2291,7 @@ This keeps repeated recalls stable.
 
 | Property               | Default               | Purpose                 |
 | ---------------------- | --------------------- | ----------------------- |
-| `windowColor`          | `transparent`         | Panel window background |
+| `windowColor`          | `transparent`         | Tight host background |
 | `menuBackgroundColor`  | `#090d12`             | Menu background         |
 | `menuBorderColor`      | `#263541`             | Menu border             |
 | `scrollbarTrackColor`  | `#26354155`           | Scrollbar track         |
@@ -2907,8 +2854,9 @@ The context menu system intentionally separates responsibilities.
 Responsible for:
 
 ```text
-window management
-layer selection
+tight host management
+activewindow-follow dismissal
+per-open layer assignment
 cursor lookup
 monitor lookup
 screen selection

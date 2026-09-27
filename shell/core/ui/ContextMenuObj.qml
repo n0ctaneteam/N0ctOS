@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell.Io
+import Quickshell.Widgets
 
 import qs.core.lib
 
@@ -12,6 +13,31 @@ CutBox {
 
     property string text:
         ""
+
+    /*
+     * Optional leading icon.
+     *
+     * Normal ContextMenu users can leave this empty.
+     */
+    property string icon:
+        ""
+
+    /*
+     * Optional leading Nerd Font glyph.
+     *
+     * Used by SystemTray for checkbox/radio indicators.
+     */
+    property string leadingContent:
+        ""
+
+    /*
+     * Separator mode.
+     *
+     * A separator is rendered as a thin line and is not
+     * interactive.
+     */
+    property bool isSeparator:
+        false
 
     property bool enabled:
         true
@@ -76,12 +102,10 @@ CutBox {
         null
 
     /*
-     * Set by ContextMenu.assignMenuWidth().
+     * Assigned by ContextMenu.
      *
      * 0 = natural width.
-     *
-     * IMPORTANT:
-     * naturalWidth does NOT depend on this property.
+     * >0 = explicit rendered menu width.
      */
     property real menuWidth:
         0
@@ -93,22 +117,16 @@ CutBox {
         true
 
     readonly property bool hasSubmenu:
-        root.submenu !== null
+        root.submenu !== null &&
+        !root.isSeparator
 
     default property alias contentData:
         body.data
 
     // ============================================================
-    // NATURAL CONTENT SIZE
+    // CONTENT SIZE
     // ============================================================
 
-    /*
-     * Explicitly boolean.
-     *
-     * This fixes:
-     *
-     *     Unable to assign [undefined] to bool
-     */
     readonly property bool hasContent:
         Boolean(
             body &&
@@ -130,26 +148,32 @@ CutBox {
             ) || 0
             : 0
 
-    /*
-     * These DO NOT reference root.width/root.height.
-     *
-     * That is the critical binding-loop fix.
-     */
-    readonly property real naturalWidth:
-        Math.max(
-            header.naturalWidth,
+    // ============================================================
+    // NATURAL SIZE
+    // ============================================================
 
-            root.contentWidth +
-            root.horizontalPadding * 2
-        )
+    readonly property real naturalWidth:
+        root.isSeparator
+            ? 180
+            : Math.max(
+                header.naturalWidth,
+
+                root.contentWidth +
+                root.horizontalPadding * 2
+            )
 
     readonly property real naturalHeight:
-        root.headerHeight +
-        (
-            root.hasContent
-                ? root.contentHeight
-                : 0
-        )
+        root.isSeparator
+            ? Math.max(
+                1,
+                root.headerHeight
+            )
+            : root.headerHeight +
+              (
+                  root.hasContent
+                      ? root.contentHeight
+                      : 0
+              )
 
     readonly property real preferredWidth:
         Math.max(
@@ -167,10 +191,6 @@ CutBox {
     // RENDERED SIZE
     // ============================================================
 
-    /*
-     * Rendering width may be assigned by ContextMenu after
-     * natural measurement.
-     */
     width:
         root.menuWidth > 0
             ? root.menuWidth
@@ -184,10 +204,12 @@ CutBox {
     // ============================================================
 
     interactive:
-        root.enabled
+        root.enabled &&
+        !root.isSeparator
 
     bgColor:
-        root.hoveredState
+        root.hoveredState &&
+        !root.isSeparator
             ? root.hoverBackground
             : root.backgroundColor
 
@@ -317,7 +339,8 @@ CutBox {
     // ============================================================
 
     Column {
-        id: layout
+        id:
+            layout
 
         anchors.fill:
             parent
@@ -330,18 +353,45 @@ CutBox {
         // ========================================================
 
         Item {
-            id: header
+            id:
+                header
 
             width:
                 root.width
 
             height:
-                root.headerHeight
+                root.isSeparator
+                    ? 9
+                    : root.headerHeight
 
             readonly property real naturalWidth: {
+                if (
+                    root.isSeparator
+                ) {
+                    return 180
+                }
+
                 let value =
-                    textItem.implicitWidth +
                     root.horizontalPadding * 2
+
+                if (
+                    leadingItem.visible
+                ) {
+                    value +=
+                        leadingItem.width +
+                        root.spacing
+                }
+
+                if (
+                    iconItem.visible
+                ) {
+                    value +=
+                        iconItem.width +
+                        root.spacing
+                }
+
+                value +=
+                    textItem.implicitWidth
 
                 if (
                     root.hasSubmenu
@@ -354,14 +404,147 @@ CutBox {
                 return value
             }
 
+            // ----------------------------------------------------
+            // SEPARATOR
+            // ----------------------------------------------------
+
+            Rectangle {
+                anchors.centerIn:
+                    parent
+
+                width:
+                    Math.max(
+                        0,
+                        parent.width - 16
+                    )
+
+                height:
+                    1
+
+                visible:
+                    root.isSeparator
+
+                color:
+                    "#263541"
+            }
+
+            // ----------------------------------------------------
+            // LEADING GLYPH
+            // ----------------------------------------------------
+
             Text {
-                id: textItem
+                id:
+                    leadingItem
+
+                width:
+                    18
 
                 anchors.left:
                     parent.left
 
                 anchors.leftMargin:
                     root.horizontalPadding
+
+                anchors.verticalCenter:
+                    parent.verticalCenter
+
+                visible:
+                    !root.isSeparator &&
+                    root.leadingContent.length > 0
+
+                text:
+                    root.leadingContent
+
+                color:
+                    !root.enabled
+                        ? root.disabledTextColor
+                        : root.hoveredState
+                            ? root.hoverTextColor
+                            : root.normalTextColor
+
+                font.family:
+                    "Symbols Nerd Font"
+
+                font.pixelSize:
+                    15
+
+                horizontalAlignment:
+                    Text.AlignHCenter
+
+                verticalAlignment:
+                    Text.AlignVCenter
+
+                Behavior on color {
+                    ColorAnimation {
+                        duration:
+                            root.animationDuration
+
+                        easing.type:
+                            Easing.OutCubic
+                    }
+                }
+            }
+
+            // ----------------------------------------------------
+            // ICON
+            // ----------------------------------------------------
+
+            IconImage {
+                id:
+                    iconItem
+
+                width:
+                    18
+
+                height:
+                    18
+
+                anchors.left:
+                    leadingItem.visible
+                        ? leadingItem.right
+                        : parent.left
+
+                anchors.leftMargin:
+                    leadingItem.visible
+                        ? root.spacing
+                        : root.horizontalPadding
+
+                anchors.verticalCenter:
+                    parent.verticalCenter
+
+                visible:
+                    !root.isSeparator &&
+                    root.icon.length > 0
+
+                source:
+                    root.icon
+
+                asynchronous:
+                    true
+            }
+
+            // ----------------------------------------------------
+            // TEXT
+            // ----------------------------------------------------
+
+            Text {
+                id:
+                    textItem
+
+                anchors.left:
+                    iconItem.visible
+                        ? iconItem.right
+                        : leadingItem.visible
+                            ? leadingItem.right
+                            : parent.left
+
+                anchors.leftMargin:
+                    (
+                        iconItem.visible ||
+                        leadingItem.visible
+                    )
+                        ? root.spacing
+                        : root.horizontalPadding
 
                 anchors.right:
                     root.hasSubmenu
@@ -382,11 +565,9 @@ CutBox {
                 color:
                     !root.enabled
                         ? root.disabledTextColor
-                        : (
-                            root.hoveredState
-                                ? root.hoverTextColor
-                                : root.normalTextColor
-                        )
+                        : root.hoveredState
+                            ? root.hoverTextColor
+                            : root.normalTextColor
 
                 font.family:
                     "Symbols Nerd Font"
@@ -414,8 +595,13 @@ CutBox {
                 }
             }
 
+            // ----------------------------------------------------
+            // SUBMENU ARROW
+            // ----------------------------------------------------
+
             Text {
-                id: submenuIndicator
+                id:
+                    submenuIndicator
 
                 visible:
                     root.hasSubmenu
@@ -466,7 +652,8 @@ CutBox {
         // ========================================================
 
         Column {
-            id: body
+            id:
+                body
 
             x:
                 root.horizontalPadding
@@ -483,7 +670,8 @@ CutBox {
                 4
 
             visible:
-                root.hasContent
+                root.hasContent &&
+                !root.isSeparator
         }
     }
 }

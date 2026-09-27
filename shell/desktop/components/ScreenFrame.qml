@@ -1785,7 +1785,7 @@ Scope {
         // blob outside dismiss area
         MouseArea {
             id: outsideClickArea
-            Rectangle{color:"#3f009fff";visible:true;anchors.fill:parent}
+            // Rectangle{color:"#3f009fff";visible:true;anchors.fill:parent}
         
             anchors.fill: parent
             z: -100
@@ -1798,7 +1798,7 @@ Scope {
                 mouse.accepted = true
         
                 const blob = focusManager.focusedBlob
-        
+
                 if (blob && blob.isBlobFocused)
                     blob.unfocusBlob()
             }
@@ -1806,7 +1806,7 @@ Scope {
         // bottom left
         MouseArea {
             id: blBlobMouseArea
-            Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
+            // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
  
             x: 0
             y: frameWindow.height - height
@@ -1844,7 +1844,7 @@ Scope {
             )
             // left side
             MouseArea{
-              Rectangle{color:"#3f0000ff";visible:true;anchors.fill:parent}
+              // Rectangle{color:"#3f0000ff";visible:true;anchors.fill:parent}
               x:0
               y: parent.height - height
               height: parent._length
@@ -1854,7 +1854,7 @@ Scope {
             }
             // bottom 
             MouseArea{
-              Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
+              // Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
               x:0
               y: parent.height - height
               height: root.hoverDetectionSize
@@ -1874,7 +1874,7 @@ Scope {
         // bottom right
         MouseArea {
             id: brBlobMouseArea
-            Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
+            // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
             x: frameWindow.width - width
             y: frameWindow.height - height
             width: root.isBrBlobActive || root.brBlobProgress > 0?
@@ -1905,7 +1905,7 @@ Scope {
             )
             // right side
             MouseArea{
-              Rectangle{color:"#3f0000ff";visible:true;anchors.fill:parent}
+              // Rectangle{color:"#3f0000ff";visible:true;anchors.fill:parent}
               x: parent.width - width
               y: parent.height - height
               height: parent._length
@@ -1915,7 +1915,7 @@ Scope {
             }
             // bottom
             MouseArea{
-              Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
+              // Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
               x:parent.width - width
               y: parent.height - height
               height: root.hoverDetectionSize
@@ -1935,7 +1935,7 @@ Scope {
         // bottom center
         MouseArea {
             id: bcBlobMouseArea
-            Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
+            // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
             x: root.innerGeometry().x + (root.innerGeometry().width - width) * 0.5
             y: frameWindow.height - height
             width: root.isBcBlobActive || root.bcBlobProgress > 0?
@@ -1958,7 +1958,7 @@ Scope {
                       Math.min(frameWindow.height * 0.50 , frameWindow.width * 0.50, 400)
                       // bottom
             MouseArea{
-              Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
+              // Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
               x:(parent.width - width) / 2
               y: parent.height - height
               height:root.hoverDetectionSize
@@ -1979,7 +1979,7 @@ Scope {
         // top left
         MouseArea {
             id: tlBlobMouseArea
-            Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
+            // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
             x: 0
             y: 0
             width: root.isTlBlobActive || root.tlBlobProgress > 0?
@@ -2008,7 +2008,7 @@ Scope {
             )
             // left side
             MouseArea{
-              Rectangle{color:"#3f0000ff";visible:true;anchors.fill:parent}
+              // Rectangle{color:"#3f0000ff";visible:true;anchors.fill:parent}
               x:0
               y: 0
               height: parent._length
@@ -2018,7 +2018,7 @@ Scope {
             }
             // top
             MouseArea{
-              Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
+              // Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
               x:0
               y: 0
               height: root.hoverDetectionSize
@@ -2038,7 +2038,7 @@ Scope {
         // top right
         MouseArea {
             id: trBlobMouseArea
-            Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
+            // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
             x: frameWindow.width - width
             y: 0
             width: root.isTrBlobActive || root.trBlobProgress > 0?
@@ -2069,7 +2069,7 @@ Scope {
             )
             // right side
             MouseArea{
-              Rectangle{color:"#3f0000ff";visible:true;anchors.fill:parent}
+              // Rectangle{color:"#3f0000ff";visible:true;anchors.fill:parent}
               x: parent.width - width
               y: 0
               height: parent._length
@@ -2079,7 +2079,7 @@ Scope {
             }
             // top
             MouseArea{
-              Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
+              // Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
               x:parent.width - width
               y: 0
               height: root.hoverDetectionSize
@@ -2099,7 +2099,7 @@ Scope {
         // top center
         MouseArea {
             id: tcBlobMouseArea
-            Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
+            // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
             x: root.innerGeometry().x + (root.innerGeometry().width - width) * 0.5
             y: 0
             width: root.isTcBlobActive || root.tcBlobProgress > 0?
@@ -2122,7 +2122,7 @@ Scope {
                       Math.min(frameWindow.height * 0.50 , frameWindow.width * 0.50, 400)
             // top
             MouseArea{
-              Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
+              // Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
               x:(parent.width - width) / 2
               y: 0
               height: root.hoverDetectionSize
@@ -2143,7 +2143,7 @@ Scope {
         // left
         MouseArea {
             id: leftBlobMouseArea
-            Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
+            // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
             x: 0
             y: root.innerGeometry().y + (root.innerGeometry().height - height) * 0.5
             height: root.isLeftBlobActive || root.leftBlobProgress > 0?
@@ -2166,7 +2166,7 @@ Scope {
                       Math.min(frameWindow.height * 0.50 , frameWindow.width * 0.50, 400)
             // side
             MouseArea{
-              Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
+              // Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
               x: 0
               y: (parent.height - height) / 2
               height: parent._length
@@ -2187,7 +2187,7 @@ Scope {
         // right
         MouseArea {
             id: rightBlobMouseArea
-            Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
+            // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
             x: frameWindow.width - width
             y: root.innerGeometry().y + (root.innerGeometry().height - height) * 0.5
             // z:200
@@ -2211,7 +2211,7 @@ Scope {
                       Math.min(frameWindow.height * 0.50 , frameWindow.width * 0.50, 400)
             // side
             MouseArea{
-              Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
+              // Rectangle{color:"#3fff0000";visible:true;anchors.fill:parent}
               x: parent.width - width
               y: (parent.height - height) / 2
               height: parent._length
@@ -2280,7 +2280,7 @@ Scope {
             y: frameWindow.height - root.frameSide("bottom") - height
             x: root.innerGeometry().x + (root.innerGeometry().width - width) * 0.5
             height: implicitHeight * root.bcBlobProgress
-            width: implicitWidth * root.bcBlobProgress
+            width: implicitWidth * (0.75 + 0.25*root.bcBlobProgress)
         }
         // top left
         Blob {
@@ -2328,7 +2328,7 @@ Scope {
             y: root.frameSide("top")
             x: root.innerGeometry().x + (root.innerGeometry().width - width) * 0.5
             height: implicitHeight * root.tcBlobProgress
-            width: implicitWidth * root.tcBlobProgress
+            width: implicitWidth * (0.75 + 0.25*root.tcBlobProgress)
           }
         // left
         Blob {
@@ -2343,7 +2343,7 @@ Scope {
             scale: root.leftBlobProgress
             x: root.frameSide("left")
             y: root.innerGeometry().y + (root.innerGeometry().height - height) * 0.5
-            height: implicitHeight * root.leftBlobProgress
+            height: implicitHeight  * (0.75 + 0.25*root.leftBlobProgress) 
             width: implicitWidth * root.leftBlobProgress
         }
         // right
@@ -2360,7 +2360,7 @@ Scope {
             scale: root.rightBlobProgress
             x: frameWindow.width - width - root.frameSide("right")
             y: root.innerGeometry().y + (root.innerGeometry().height - height) * 0.5
-            height: implicitHeight * root.rightBlobProgress
+            height: implicitHeight * (0.75 + 0.25*root.rightBlobProgress) 
             width: implicitWidth * root.rightBlobProgress
         }
 
