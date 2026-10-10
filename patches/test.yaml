@@ -1,0 +1,54 @@
+meta:
+  version: "1.2.0"
+  name: "Aurora"
+  summary: "Adds redis cache layer and rotates API keys"
+  authors:
+    - name: "Jane"
+      email: "jane@example.com"
+
+packages:
+  add:    [hyprland, jq]
+  remove: [fwupd]
+
+pre:
+  - id: backup
+    run: cp /home/n0ctanedev/Projects/N0ctOS/REPO/patches/test.conf /home/n0ctanedev/Projects/N0ctOS/REPO/patches/test.conf.bak
+    timeout: 30
+    when: "test -f /home/n0ctanedev/Projects/N0ctOS/REPO/patches/test.conf"
+
+files:
+  - op: create
+    path: /home/n0ctanedev/Projects/N0ctOS/REPO/patches/cache.conf
+    mode: "0644"
+    content: |
+      [cache]
+      backend = redis
+
+  - op: replace
+    path: /home/n0ctanedev/Projects/N0ctOS/REPO/patches/test.conf
+    match:   "^ cache_size _ = _ {:d:}"
+    replace: "512"
+
+  - op: replace
+    path: /home/n0ctanedev/Projects/N0ctOS/REPO/patches/test.conf
+    match:   "^ hl.gapsin _ = _ {:*:}"
+    replace: "6"
+
+  - op: append
+    path: /home/n0ctanedev/Projects/N0ctOS/REPO/patches/test.conf
+    content: |
+      [metrics]
+      enabled = true
+
+  - op: delete
+    path: /home/n0ctanedev/Projects/N0ctOS/REPO/patches/legacy.conf
+
+commands:
+  - id: reload
+    run: echo "systemctl restart app"
+    timeout: 60
+
+post:
+  - id: verify
+    run: curl -sf localhost:8080/health
+    timeout: 30

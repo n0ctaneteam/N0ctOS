@@ -1,0 +1,9 @@
+# NEGATIVE demo — command exits non-zero. Aborts the whole patch:
+#   "command 'boom' failed (exit 3)". In --dry-run it only prints `would run`.
+meta:
+  version: "0.0.7"
+  name: "neg-cmd-fail"
+
+commands:
+  - id: boom
+    run: exit 3

@@ -1,0 +1,40 @@
+# 03 — wildcards: single-char, any-text, a composed pattern, `^` vs `^+`.
+# Run from repo root:  bin/n0ct-patch examples/patches/03-wildcards.yaml [--dry-run]
+meta:
+  version: "0.3.0"
+  name: "wildcards"
+  summary: "Single-char wildcard, any-text wildcards, composed pattern, ^ vs ^+"
+
+files:
+  # `*` is exactly ONE char: `port-A = 1` hits, `port-AB = 2` does not.
+  - op: replace
+    path: examples/work/ports.conf
+    match: "^ port- * _ = _ {:d:}"
+    replace: "7"
+
+  # Composed pattern — any-text + optional spaces + one char + digit slot.
+  # `  listen   7 : 443 # web` → only the port changes, rest preserved.
+  # (`listen ab:80` never matches: `AB` is two chars where one is allowed.)
+  - op: replace
+    path: examples/work/ports.conf
+    match: "^ listen _? * _? : _? {:d:}"
+    replace: "8443"
+
+  # `^` matches leading/trailing anything: indent and comment survive.
+  - op: replace
+    path: examples/work/ports.conf
+    match: "^ port _? = _? {:d:}"
+    replace: "9090"
+
+  # `^+` needs 1+ chars before the key: only the INDENTED api_key line hits,
+  # the bare `api_key = oldkey123` line is left alone by this op.
+  - op: replace
+    path: examples/work/app.conf
+    match: "^+ api_key _ = _ {::}"
+    replace: "REDACTED"
+
+  # `^` also matches zero chars: now the bare line hits too.
+  - op: replace
+    path: examples/work/app.conf
+    match: "^ api_key _ = _ {::}"
+    replace: "REDACTED"

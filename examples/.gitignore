@@ -1,0 +1,25 @@
+# examples/.gitignore — explicit include list (no-bloat design)
+# Exclude all, then include only listed files.
+# NOTE: examples/work/* stays ignored (mutated by verify.sh test runs).
+# TO ADD: append !<path> (relative to this dir)
+*
+!*/
+!.gitignore
+local
+local/**
+__pycache__
+__pycache__/**
+!verify.sh
+!patches/01-basics.yaml
+!patches/02-spacing.yaml
+!patches/03-wildcards.yaml
+!patches/04-ops.yaml
+!patches/05-pkgs-a.yaml
+!patches/06-pkgs-b.yaml
+!patches/neg/neg-cmd-fail.yaml
+!patches/neg/neg-create-exists.yaml
+!patches/neg/neg-double-space.yaml
+!patches/neg/neg-no-match.yaml
+!patches/neg/neg-two-slots.yaml
+!patches/neg/neg-unknown-slot.yaml
+!patches/neg/neg-zero-slot.yaml

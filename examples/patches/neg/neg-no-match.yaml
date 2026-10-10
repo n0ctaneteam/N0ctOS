@@ -1,0 +1,11 @@
+# NEGATIVE demo — valid pattern, zero matching lines.
+# Real run aborts ("no match ..."); --dry-run prints "would ABORT", exit 0.
+meta:
+  version: "0.0.5"
+  name: "neg-no-match"
+
+files:
+  - op: replace
+    path: examples/work/app.conf
+    match: "^ nosuchkey _ = _ {:d:}"
+    replace: "1"

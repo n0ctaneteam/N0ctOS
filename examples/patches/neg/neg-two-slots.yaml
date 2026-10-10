@@ -1,0 +1,12 @@
+# NEGATIVE demo — two slots. Aborts with:
+#   "pattern must contain exactly one {: :} slot, found 2".
+# Safe to run for real: compilation fails before anything is written.
+meta:
+  version: "0.0.2"
+  name: "neg-two-slots"
+
+files:
+  - op: replace
+    path: examples/work/app.conf
+    match: "{:d:} _ = _ {:d:}"
+    replace: "x"

@@ -1,2 +1,61 @@
-# system's local configs and state dir
+# ========================================================================
+# 
+# This ignore design was made only and ONLY for no-bloat repo architecture,
+# and personalized-setup preservation
+# 
+# Here, we exclude ABSOLUTE HATED files/dirs first (like __pycache__)
+# Then, we exclude everything
+# Then we include only the INTENDED paths...
+# 
+# Each path/dir/folder has a .gitignore file, in which we tell git to
+# track exact files... So updates/patches dont affect local changes
+# and additions or files and folder structures
+# 
+# IF U ARE CONTRIBUTING AND ADDING A PATH TO ANY .gitignore, 
+# THEN MAKE A NEW BRANCH BEFORE PUSHING CODE,
+# THIS ENSURES SAFETY AND SECURITY
+# 
+# Thanx to this design, u can store custom global/system-wide data
+# or do experiments while development, or anything u wanna do,
+# but it wont get pushed while u commit to remote...
+# 
+# TO EXCLUDE A PATH/ITEM: <path/name>
+# TO INCLUDE A DIR: !<path/name>
+# TO INCLUDES FILES IN A DIR: <dir>/.gitignore -> !<item/dir 1> , !<item/dir 2> ...
+# 
+# this makes sure that only the path and its files are tracked...
+# ========================================================================
+
+# 1. Exclude everything first
+*
+# Allow directory traversal + per-dir .gitignore files
+!.gitignore
+
+# 1b. Exclude system-specific hated folders everywhere
+# (kept AFTER re-includes so they stay excluded)
 local
+__pycache__
+
+# ================================
+# ======   INCLUDE THESE    ======
+# ================================
+# NOTE: each dir below has its own .gitignore with explicit !file list.
+# Root only un-ignores the dir itself; file decisions live in <dir>/.gitignore
+!bin/
+!config/
+!docs/
+!installers/
+!patches/
+!shell/
+!examples/
+
+# Top-level intended files (explicit)
+!ARCHITECTURE.md
+!README.md
+!install.sh
+!update.sh
+!os-release
+!config.jsonc
+!--apps-pkgs--
+!--aur-pkgs--
+!--bare-pkgs--

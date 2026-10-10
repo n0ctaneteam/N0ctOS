@@ -1,0 +1,10 @@
+# NEGATIVE demo — create without overwrite on an existing file.
+# Aborts with "exists and overwrite=false". In --dry-run it prints SKIP.
+meta:
+  version: "0.0.6"
+  name: "neg-create-exists"
+
+files:
+  - op: create
+    path: examples/work/app.conf
+    content: "boom\n"

@@ -1,0 +1,49 @@
+# 04 — ops: create/mode, delete cycle, when (single + list), commands, post.
+# Run from repo root:  bin/n0ct-patch examples/patches/04-ops.yaml [--dry-run]
+meta:
+  version: "0.4.0"
+  name: "ops"
+  summary: "create/mode/overwrite, delete, when single+list, commands, post"
+
+files:
+  # Created once (when-guard), with an explicit mode.
+  - op: create
+    path: examples/work/cache.conf
+    mode: "0644"
+    content: |
+      [cache]
+      backend = redis
+    when: "test ! -f examples/work/cache.conf"
+
+  # Self-contained delete demo: build it, then remove it.
+  - op: create
+    path: examples/work/doomed.conf
+    content: "temporary\n"
+    when: "test ! -f examples/work/doomed.conf"
+
+  # Second run: already gone + missing_ok (default true) → logged skip.
+  - op: delete
+    path: examples/work/doomed.conf
+
+  # when:false → skipped, logged, patch continues.
+  - op: delete
+    path: examples/work/cache.conf
+    when: "test -f examples/work/does-not-exist"
+
+  # when as a list: ALL must pass. Guarded so re-runs skip instead of duplicating.
+  - op: append
+    path: examples/work/app.conf
+    content: |
+      [metrics]
+      enabled = true
+    when:
+      - "test -f examples/work/app.conf"
+      - "! grep -qF '[metrics]' examples/work/app.conf"
+
+commands:
+  - id: show-cache
+    run: cat examples/work/cache.conf
+
+post:
+  - id: verify-metrics
+    run: grep -qF '[metrics]' examples/work/app.conf

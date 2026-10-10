@@ -1,0 +1,13 @@
+# patches/.gitignore — explicit include list (no-bloat design)
+# Exclude all, then include only listed files.
+# TO ADD: append !<path> (relative to this dir)
+*
+!*/
+!.gitignore
+local
+local/**
+__pycache__
+__pycache__/**
+!legacy.conf
+!test.conf
+!test.yaml

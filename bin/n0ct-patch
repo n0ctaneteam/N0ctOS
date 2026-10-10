@@ -1,0 +1,673 @@
+#!/usr/bin/env python3
+"""
+patcher.py — applies a YAML patch file to the local system.
+
+Usage:
+    patcher.py patch.yaml [--dry-run]
+    patcher.py --apply-missing [--patches-dir DIR] [--applied-file FILE] [--dry-run]
+    patcher.py --all [--patches-dir DIR] [--applied-file FILE] [--dry-run]
+
+Single-patch mode applies one YAML file: pre → pkgs → files → commands → post.
+
+Batch modes scan a patches dir in filename order:
+  --apply-missing  only patches not yet listed in the applied file (diff)
+  --all            every *.yaml, ignoring the applied file (still registers)
+
+Batch order:
+  1. all `pre` blocks, file order
+  2. merged packages: last-op-wins per package, remove then install, once
+  3. per file in order: files → commands → post, registering each on success
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import yaml
+
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+#
+# Root is always /usr/share/N0ctOS on a deployed system. Patches live in
+# <root>/patches. The applied list lives in the user config dir.
+
+DEFAULT_ROOT = Path("/usr/share/N0ctOS")
+DEFAULT_PATCHES_DIR = DEFAULT_ROOT / "patches"
+
+
+def default_applied_file() -> Path:
+    return Path.home() / ".config" / "N0ctOS" / "data" / "patches-applied.txt"
+
+
+LEGACY_APPLIED_FILE = Path.home() / ".config" / "N0ctOS" / "data" / "patches-applied.json"
+
+
+# ---------------------------------------------------------------------------
+# Package manager
+# ---------------------------------------------------------------------------
+#
+# Scalable base commands — the "start part", package names are appended.
+# Override these two vars to swap managers. Non-interactive by default
+# so patches never hang on a prompt. Removes always run before installs.
+
+PKG_ADD_BASE = ["paru", "-Sy", "--needed", "--noconfirm"]
+PKG_REMOVE_BASE = ["paru", "-Rs", "--noconfirm"]
+PKG_TIMEOUT = 300
+
+
+def apply_packages(add, remove, dry_run: bool):
+    """Remove then install package lists via the configured manager."""
+    add = list(add or [])
+    remove = list(remove or [])
+
+    if remove:
+        cmd = PKG_REMOVE_BASE + remove
+        print(f"[pkg] remove {' '.join(remove)}")
+        print(f"  run: {' '.join(cmd)}")
+        if not dry_run:
+            r = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=PKG_TIMEOUT
+            )
+            if r.returncode != 0:
+                raise RuntimeError(
+                    f"package remove failed (exit {r.returncode})\n"
+                    f"stderr: {r.stderr.strip()}"
+                )
+            print("[pkg] remove — ok")
+
+    if add:
+        cmd = PKG_ADD_BASE + add
+        print(f"[pkg] add {' '.join(add)}")
+        print(f"  run: {' '.join(cmd)}")
+        if not dry_run:
+            r = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=PKG_TIMEOUT
+            )
+            if r.returncode != 0:
+                raise RuntimeError(
+                    f"package install failed (exit {r.returncode})\n"
+                    f"stderr: {r.stderr.strip()}"
+                )
+            print("[pkg] install — ok")
+
+
+def merge_packages(patches):
+    """Merge package lists, last-op-wins per package.
+
+    Walks patches in order; each add/remove overwrites the package's
+    pending state. Returns (net_add, net_remove) in first-seen order.
+    """
+    state = {}
+    for patch in patches:
+        pkgs = patch.get("packages") or {}
+        for p in pkgs.get("add") or []:
+            state[str(p)] = "add"
+        for p in pkgs.get("remove") or []:
+            state[str(p)] = "remove"
+    net_add = [p for p, s in state.items() if s == "add"]
+    net_remove = [p for p, s in state.items() if s == "remove"]
+    return net_add, net_remove
+
+
+# ---------------------------------------------------------------------------
+# Match language
+# ---------------------------------------------------------------------------
+#
+# Tokens (space-separated in the pattern):
+#   ^      any text (leading/trailing/between), non-greedy
+#   ^+     any text, at least one char, non-greedy
+#   _      variable space (one or more whitespace chars)
+#   _?     optional space (zero or more whitespace chars)
+#   *      single wildcard char (any one char)
+#   {:x:}  the replace slot — always replaced
+#   other  literal text
+#
+# Slot contents:
+#   {::}    one or more chars
+#   {:*:}   zero or more chars
+#   {:d:}   digits
+#   {:s:}   whitespace
+#
+# Rules:
+#   - Exactly one slot per pattern.
+#   - Matching is within a single line.
+#   - Literal text is escaped; only tokens have special meaning.
+
+SLOT_RE = re.compile(r"\{:([^:]*):\}")
+
+SLOT_BODIES = {
+    "":   r".+",
+    "*":  r".*",
+    "d":  r"\d+",
+    "s":  r"\s+",
+}
+
+
+def compile_pattern(pattern: str) -> re.Pattern:
+    """Compile a match-language string into a regex with one capture group."""
+    tokens = pattern.split(" ")
+    parts = []
+    slot_count = 0
+
+    for tok in tokens:
+        if not tok:
+            # Double spaces in pattern — treat as a literal-space error.
+            raise ValueError(f"empty token in pattern: {pattern!r}")
+
+        m = SLOT_RE.fullmatch(tok)
+        if m:
+            slot_count += 1
+            body = m.group(1)
+            if body not in SLOT_BODIES:
+                raise ValueError(f"unknown slot body: {tok!r}")
+            parts.append(f"({SLOT_BODIES[body]})")
+            continue
+
+        if tok == "^+":
+            parts.append(r".+?")
+        elif tok == "^":
+            parts.append(r".*?")
+        elif tok == "_?":
+            parts.append(r"\s*")
+        elif tok == "_":
+            parts.append(r"\s+")
+        elif tok == "*":
+            parts.append(r".")
+        else:
+            parts.append(re.escape(tok))
+
+    if slot_count != 1:
+        raise ValueError(
+            f"pattern must contain exactly one {{: :}} slot, "
+            f"found {slot_count}: {pattern!r}"
+        )
+
+    return re.compile("".join(parts))
+
+
+# ---------------------------------------------------------------------------
+# Conditions
+# ---------------------------------------------------------------------------
+
+def check_when(when, dry_run: bool) -> bool:
+    """Return True if op should run. `when` is a shell cmd or list of cmds."""
+    if when is None:
+        return True
+    cmds = when if isinstance(when, list) else [when]
+    for cmd in cmds:
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        ok = r.returncode == 0
+        if dry_run:
+            print(f"    [when] {cmd!r} → {'pass' if ok else 'fail'}")
+        if not ok:
+            return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# File operations
+# ---------------------------------------------------------------------------
+
+def op_create(spec: dict, dry_run: bool):
+    p = Path(spec["path"])
+    overwrite = spec.get("overwrite", False)
+    content = spec.get("content", "")
+    mode = spec.get("mode")
+
+    if p.exists() and not overwrite:
+        if dry_run:
+            print(f"[create] {p} — EXISTS, overwrite=false → SKIP")
+            return
+        raise RuntimeError(f"{p} exists and overwrite=false")
+
+    if dry_run:
+        verb = "OVERWRITE" if p.exists() else "CREATE"
+        print(f"[create] {p} — {verb}, {len(content)} bytes")
+        if mode:
+            print(f"         mode: {mode}")
+        return
+
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content)
+    if mode:
+        p.chmod(int(mode, 8))
+    print(f"[create] wrote {p}")
+
+
+def op_delete(spec: dict, dry_run: bool):
+    p = Path(spec["path"])
+    missing_ok = spec.get("missing_ok", True)
+
+    if not p.exists():
+        if missing_ok:
+            print(f"[delete] {p} — already gone, skip")
+            return
+        raise RuntimeError(f"{p} does not exist")
+
+    if dry_run:
+        print(f"[delete] {p} — DELETE ({p.stat().st_size} bytes)")
+        return
+
+    p.unlink()
+    print(f"[delete] removed {p}")
+
+
+def op_append(spec: dict, dry_run: bool):
+    p = Path(spec["path"])
+    content = spec.get("content", "")
+    newline_before = spec.get("newline_before", True)
+
+    if not p.exists():
+        if dry_run:
+            print(f"[append] {p} — MISSING → real run would ABORT")
+            return
+        raise RuntimeError(f"{p} does not exist (append target)")
+
+    existing = p.read_text()
+    sep = ""
+    if newline_before and existing and not existing.endswith("\n"):
+        sep = "\n"
+
+    if dry_run:
+        preview = content.splitlines()[0] if content else ""
+        print(f"[append] {p} — +{len(content)} bytes, first line: {preview!r}")
+        return
+
+    with p.open("a") as f:
+        f.write(sep + content)
+    print(f"[append] {p}")
+
+
+def op_replace(spec: dict, dry_run: bool):
+    p = Path(spec["path"])
+    pattern = spec["match"]
+    replacement = spec["replace"]
+
+    if not p.exists():
+        if dry_run:
+            print(f"[replace] {p}")
+            print(f"          target missing → real run would ABORT")
+            return
+        raise RuntimeError(f"{p} does not exist (replace target)")
+
+    rx = compile_pattern(pattern)
+    lines = p.read_text().splitlines(keepends=True)
+    matches = []
+
+    for i, line in enumerate(lines):
+        m = rx.search(line.rstrip("\n"))
+        if m:
+            matches.append((i, m))
+
+    if not matches:
+        if dry_run:
+            print(f"[replace] {p}")
+            print(f"          pattern: {pattern!r}")
+            print(f"          regex:   {rx.pattern}")
+            print(f"          matches: 0  → real run would ABORT")
+            return
+        raise RuntimeError(
+            f"no match in {p} for pattern {pattern!r} "
+            f"(compiled: {rx.pattern})"
+        )
+
+    if dry_run:
+        print(f"[replace] {p}")
+        print(f"          pattern: {pattern!r}")
+        print(f"          regex:   {rx.pattern}")
+        print(f"          matches: {len(matches)}")
+        for i, m in matches:
+            old = lines[i].rstrip("\n")
+            new = rx.sub(lambda mm: mm.group(0)[:mm.start(1) - mm.start(0)]
+                         + replacement
+                         + mm.group(0)[mm.end(1) - mm.start(0):],
+                         old, count=1)
+            print(f"          line {i + 1}: {old!r}")
+            print(f"                 → {new!r}")
+        return
+
+    for i, _ in matches:
+        line = lines[i].rstrip("\n")
+        new_line = rx.sub(
+            lambda mm: mm.group(0)[:mm.start(1) - mm.start(0)]
+                       + replacement
+                       + mm.group(0)[mm.end(1) - mm.start(0):],
+            line,
+            count=1,
+        )
+        # Preserve original newline
+        ending = "\n" if lines[i].endswith("\n") else ""
+        lines[i] = new_line + ending
+
+    p.write_text("".join(lines))
+    print(f"[replace] {p} — {len(matches)} line(s) updated")
+
+
+FILE_OPS = {
+    "create": op_create,
+    "delete": op_delete,
+    "append": op_append,
+    "replace": op_replace,
+}
+
+
+def run_file_op(spec: dict, dry_run: bool):
+    op = spec.get("op")
+    if op not in FILE_OPS:
+        raise ValueError(f"unknown file op: {op!r}")
+    FILE_OPS[op](spec, dry_run)
+
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+def run_command(cmd: dict, dry_run: bool):
+    cid = cmd["id"]
+    run = cmd["run"]
+    timeout = cmd.get("timeout", 300)
+
+    if dry_run:
+        first = run.strip().splitlines()[0] if run.strip() else ""
+        print(f"[cmd] {cid} — would run: {first}")
+        return
+
+    r = subprocess.run(
+        run, shell=True, capture_output=True, text=True, timeout=timeout
+    )
+    if r.returncode != 0:
+        raise RuntimeError(
+            f"command {cid!r} failed (exit {r.returncode})\n"
+            f"stderr: {r.stderr.strip()}"
+        )
+    print(f"[cmd] {cid} — ok")
+
+
+# ---------------------------------------------------------------------------
+# Single patch
+# ---------------------------------------------------------------------------
+
+def run_section(name: str, items, runner, dry_run: bool):
+    if not items:
+        return
+    print(f"\n=== {name} ===")
+    for item in items:
+        if not check_when(item.get("when"), dry_run):
+            label = item.get("id") or item.get("path") or "?"
+            print(f"[skip] {label} — when condition failed")
+            continue
+        runner(item, dry_run)
+
+
+def load_patch(patch_path: Path):
+    """Load + validate one patch YAML. Returns the patch dict."""
+    patch = yaml.safe_load(Path(patch_path).read_text())
+    meta = (patch or {}).get("meta") or {}
+    if "version" not in meta:
+        raise RuntimeError(f"{patch_path} is missing meta.version")
+    return patch
+
+
+def print_patch_header(patch, dry_run: bool):
+    meta = patch.get("meta") or {}
+    print(f"patch: {meta['version']}"
+          + (f" ({meta['name']})" if meta.get("name") else ""))
+    if meta.get("summary"):
+        print(f"  {meta['summary']}")
+    if dry_run:
+        print("  [DRY RUN]")
+
+
+def apply_file_phases(patch, dry_run: bool, with_packages: bool,
+                      with_pre: bool = True):
+    """Run pre → pkgs → files → commands → post. Raises on any failure."""
+    if with_pre:
+        run_section("pre", patch.get("pre") or [], run_command, dry_run)
+
+    if with_packages:
+        pkgs = patch.get("packages") or {}
+        if pkgs.get("add") or pkgs.get("remove"):
+            print("\n=== packages ===")
+            apply_packages(pkgs.get("add"), pkgs.get("remove"), dry_run)
+
+    run_section("files", patch.get("files") or [], run_file_op, dry_run)
+    run_section("commands", patch.get("commands") or [], run_command, dry_run)
+    run_section("post", patch.get("post") or [], run_command, dry_run)
+
+
+def apply_single_patch(patch_path: Path, dry_run: bool):
+    """Apply one patch YAML file. Raises on any failure."""
+    patch = load_patch(patch_path)
+    print_patch_header(patch, dry_run)
+    apply_file_phases(patch, dry_run, with_packages=True, with_pre=True)
+
+
+# ---------------------------------------------------------------------------
+# Applied tracking (plain text, one filename per line)
+# ---------------------------------------------------------------------------
+#
+# The applied file is plain text: one patch filename per line, e.g.
+#   1.2.0-aurora.yaml
+#   1.2.1-fix.yaml
+# Blank lines and lines starting with # are ignored. A legacy JSON list
+# file (["a.yaml", ...]) is accepted on read for migration, but writes
+# are always plain text.
+#
+# Permissions: the file is read-only (444) after writing; writing needs
+# sudo. Parent dir is created 755.
+
+def load_applied(path: Path):
+    """Return the ordered list of applied patch filenames."""
+    p = Path(path)
+    if not p.exists():
+        # Migration: fall back to legacy .json next to the .txt path.
+        legacy = p.with_suffix(".json")
+        if p.suffix == ".txt" and legacy.exists():
+            p = legacy
+        elif LEGACY_APPLIED_FILE.exists() and p == default_applied_file():
+            p = LEGACY_APPLIED_FILE
+        else:
+            return []
+        if not p.exists():
+            return []
+
+    try:
+        text = p.read_text()
+    except PermissionError as e:
+        raise RuntimeError(f"cannot read {p}: {e} (check permissions)")
+
+    stripped = text.strip()
+    if stripped.startswith("["):
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"cannot parse {p} as JSON: {e}")
+        if not isinstance(data, list):
+            raise RuntimeError(f"applied file {p} must be a list or line-per-file")
+        names = []
+        for entry in data:
+            s = str(entry).strip()
+            if s and not s.startswith("#"):
+                names.append(s)
+        return names
+
+    names = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        names.append(s)
+    return names
+
+
+def save_applied(path: Path, names):
+    """Atomically write the applied list as plain text, then chmod 444."""
+    p = Path(path)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            p.parent.chmod(0o755)
+        except PermissionError:
+            pass  # best effort; dir may be root-owned
+        tmp = p.with_name(p.name + ".tmp")
+        body = "".join(n + "\n" for n in names)
+        tmp.write_text(body)
+        tmp.replace(p)
+        try:
+            p.chmod(0o444)
+        except PermissionError:
+            pass
+    except PermissionError as e:
+        raise RuntimeError(f"cannot write {p}: {e} (run with sudo?)")
+
+
+# ---------------------------------------------------------------------------
+# Batch mode
+# ---------------------------------------------------------------------------
+#
+# Order:
+#   1. all `pre` blocks, file order (backups before anything changes)
+#   2. merged packages: last-op-wins per package, remove then install, once
+#   3. per file in order: files → commands → post, each registered on success
+
+def select_patches(patches_dir: Path, applied, select_all: bool):
+    """Return (all_paths, selected_paths) in filename order."""
+    d = Path(patches_dir)
+    if not d.is_dir():
+        raise RuntimeError(f"patches dir not found: {d}")
+    all_paths = sorted(d.glob("*.yaml"), key=lambda p: p.name)
+    if select_all:
+        return all_paths, list(all_paths)
+    applied_set = set(applied)
+    selected = [p for p in all_paths if p.name not in applied_set]
+    return all_paths, selected
+
+
+def apply_batch(patches_dir: Path, applied_file: Path, dry_run: bool,
+                select_all: bool):
+    """Apply a batch of patches with one merged package pass."""
+    all_paths, selected_paths = select_patches(
+        patches_dir, load_applied(applied_file), select_all
+    )
+    if not all_paths:
+        print(f"no patches in {patches_dir}")
+        return
+
+    applied = load_applied(applied_file)
+    applied_set = set(applied)
+    mode = "all" if select_all else "diff"
+    print(f"patches dir: {patches_dir} "
+          f"({len(selected_paths)} selected, {len(all_paths)} total)")
+    print(f"applied file: {applied_file} ({len(applied)} applied)")
+    print(f"mode: {mode}")
+    if dry_run:
+        print("  [DRY RUN — will not register]")
+
+    if not select_all:
+        for p in all_paths:
+            if p.name in applied_set:
+                print(f"[skip] {p.name} — already applied")
+    if not selected_paths:
+        print("nothing to do.")
+        return
+
+    loaded = [(p, load_patch(p)) for p in selected_paths]
+
+    # 1. pres upfront, file order
+    for path, patch in loaded:
+        if patch.get("pre"):
+            print(f"\n>>> {path.name} (pre) <<<")
+            run_section("pre", patch.get("pre") or [], run_command, dry_run)
+
+    # 2. merged packages, remove then install, once
+    net_add, net_remove = merge_packages([patch for _, patch in loaded])
+    if net_add or net_remove:
+        print("\n=== packages (merged) ===")
+        print(f"  from: {', '.join(p.name for p, _ in loaded)}")
+        if net_remove:
+            print(f"  remove: {' '.join(net_remove)}")
+        if net_add:
+            print(f"  add: {' '.join(net_add)}")
+        apply_packages(net_add, net_remove, dry_run)
+    else:
+        print("\n=== packages (merged) ===\n  nothing to do")
+
+    # 3. per-file files → commands → post, register each on success
+    for path, patch in loaded:
+        name = path.name
+        print(f"\n>>> {name} <<<")
+        print_patch_header(patch, dry_run)
+        run_section("files", patch.get("files") or [], run_file_op, dry_run)
+        run_section("commands", patch.get("commands") or [],
+                    run_command, dry_run)
+        run_section("post", patch.get("post") or [], run_command, dry_run)
+        if dry_run:
+            print(f"  [dry-run] would register {name}")
+        elif name in applied_set:
+            print(f"[register] {name} — already listed")
+        else:
+            applied.append(name)
+            applied_set.add(name)
+            save_applied(applied_file, applied)
+            print(f"[register] {name}")
+
+    print("\ndone.")
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("patch", nargs="?", help="path to patch YAML")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--apply-missing", action="store_true",
+                    help="batch: apply unapplied patches from --patches-dir")
+    ap.add_argument("--all", action="store_true",
+                    help="batch: apply every patch, ignore applied file "
+                         "(still registers)")
+    ap.add_argument("--patches-dir", default=str(DEFAULT_PATCHES_DIR),
+                    help="dir to scan in batch mode (default: %(default)s)")
+    ap.add_argument("--applied-file", default=str(default_applied_file()),
+                    help="plain-text applied list (default: %(default)s)")
+    ap.add_argument("--no-root-check", action="store_true",
+                    help="testing only: allow real runs without root")
+    args = ap.parse_args()
+
+    # Real runs mutate the system (packages, /etc files, read-only record).
+    # Refuse to limp along unprivileged; --dry-run previews need no root.
+    if os.geteuid() != 0 and not args.dry_run and not args.no_root_check:
+        print("n0ct-patch: must run as root — re-run with sudo "
+              "(or preview with --dry-run)", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        if args.apply_missing or args.all:
+            if args.patch:
+                ap.error("patch file cannot be combined with "
+                         "--apply-missing/--all")
+            apply_batch(Path(args.patches_dir),
+                        Path(args.applied_file),
+                        args.dry_run,
+                        select_all=args.all)
+        else:
+            if not args.patch:
+                ap.error("patch file required unless --apply-missing/--all "
+                         "is given")
+            apply_single_patch(Path(args.patch), args.dry_run)
+            print("\ndone.")
+    except (RuntimeError, ValueError, FileNotFoundError,
+            PermissionError) as e:
+        print(f"\nFAILED: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

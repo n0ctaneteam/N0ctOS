@@ -1,0 +1,27 @@
+# bin/.gitignore — explicit include list (no-bloat design)
+# Exclude all, then include only listed files.
+# TO ADD: append !<filename> (relative to this dir)
+
+!n0ct-ascii
+!n0ctbar
+!n0ctl
+!n0ctl-cmd-connectivity-unblock
+!n0ctl-randomWallpaper
+!n0ctl-run-kitty-centered
+!n0ctl-themeLoad
+!n0ctl-themePick
+!n0ctl-themeReload
+!n0ctl-wallPick
+!n0ctl-wallSwitch
+!n0ctos-install
+!n0ctos-update
+!n0ct-patch
+!n0ct-utils-screenshot.sh
+!n0shell-bar
+!n0shell-launch
+!n0shell-music
+!n0shell-notification
+!n0shell-power
+!n0shell-settings
+!n0shell-switch
+!pkg
