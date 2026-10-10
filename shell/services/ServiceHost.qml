@@ -32,7 +32,8 @@ QtObject {
              Media,
              Notifications,
              SystemTray,
-             Animations
+             Animations,
+             SoundFX
          ]
 
     Component.onCompleted: {

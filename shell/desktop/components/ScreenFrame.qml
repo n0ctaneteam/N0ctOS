@@ -31,7 +31,7 @@ Scope {
     property real blobWidth: 300
     property real blobHeight: 100
     property real blobMinMargin: 0
-    property real blobAnimationDuration: 3000
+    property real blobAnimationDuration: 300
     property var blobAnimationEasing: Easing.InOutCirc
     // ============================================================
     // SIGNAL API
@@ -570,7 +570,7 @@ Scope {
         var tlNewRSlidingCorner = tl * (1 - 0.5 * root.tlBlobProgress)
         var tlNewRInnerCorner =  Math.min(Math.max(0, Math.min(tlBlobContent.width*0.5, tl * 0.5)), (Math.max(tlNewRSlidingCorner*root.tlBlobProgress/2 , root.blobMinMargin*root.tlBlobProgress)+tlBlobContent.height)*0.5)
         var tlNewREdgeCorner =  Math.min(Math.max(0, Math.min(tlBlobContent.width*0.5, tl * 0.5)), (Math.max(tlNewRSlidingCorner*root.tlBlobProgress/2 , root.blobMinMargin*root.tlBlobProgress)+tlBlobContent.height)*0.5)
-        var tlWidth = tlBlobContent.width + Math.max(tlNewRSlidingCorner*root.tlBlobProgress/2 , root.blobMinMargin*root.tlBlobProgress) - tlNewRSlidingCorner*root.tlBlobProgress*2
+        var tlWidth = tlBlobContent.width + Math.max(tlNewRSlidingCorner*root.tlBlobProgress/2 , root.blobMinMargin*root.tlBlobProgress) - tlNewRSlidingCorner*root.tlBlobProgress*3
         var tlHeight = tlBlobContent.height + Math.max(tlNewRSlidingCorner*root.tlBlobProgress/2 , root.blobMinMargin*root.tlBlobProgress)
         // Right Blob
         var rightStaticHeight = rightBlobContent.height / root.rightBlobProgress
@@ -614,7 +614,7 @@ Scope {
         // ========================================================
         p +=
             "M " +
-            (x + tl + tlWidth + tlNewRSlidingCorner) +
+            (x + tl + tlWidth + tlNewRSlidingCorner + tlNewREdgeCorner) +
             " " +
             y +
             " "
@@ -1461,15 +1461,6 @@ Scope {
           }
 
 
-        
-        p +=
-            "L " +
-            (x + tl + tlWidth + tlNewRSlidingCorner) +
-            " " +
-            (y) +
-            " "
-
-
         p += "Z"
 
         return p
@@ -1633,6 +1624,44 @@ Scope {
     }
 
     // ============================================================
+    // BLOB DISMISS
+    //
+    // The fullscreen dismiss area closes every selected blob
+    // when the user presses outside blob content. Presses are
+    // consumed here and are NOT passed through below (the
+    // wlrctl replay experiment was removed: synthetic clicks
+    // did not reliably reach focused windows).
+    // ============================================================
+
+    /*
+     * ContextMenu has one global menu; ScreenFrame has eight
+     * independent blobs. Dismissing means clearing every
+     * selected blob, not just the focused one: a module can
+     * stay selected without focus (late registry activation,
+     * scripted activation), and leaving it selected keeps
+     * the fullscreen mask up, eating all desktop clicks.
+     *
+     * unfocusBlob() is safe on already-closed blobs.
+     */
+    function dismissAllBlobs() {
+        const blobs = root._blobMap()
+
+        for (const key in blobs) {
+            const blob = blobs[key]
+
+            if (
+                blob &&
+                (
+                    blob.isBlobFocused ||
+                    blob.activeModule !== ""
+                )
+            ) {
+                blob.unfocusBlob()
+            }
+        }
+    }
+
+    // ============================================================
     // FRAME WINDOW
     // ============================================================
     PanelWindow {
@@ -1781,6 +1810,12 @@ Scope {
 
         // ========================================================
         // HOVER MOUSE AREAS
+        //
+        // Stacking contract: every hover area stays BELOW the Blob
+        // containers (explicit negative z), so blob/module content
+        // always receives clicks and hover first. These areas only
+        // observe hover to open and keep blobs alive. Same reason
+        // outsideClickArea sits at z: -100.
         // ========================================================
         // blob outside dismiss area
         MouseArea {
@@ -1792,32 +1827,38 @@ Scope {
         
             visible: root.anyBlobModuleSelected
             enabled: root.anyBlobModuleSelected
-            acceptedButtons: Qt.LeftButton
-        
-            onPressed: function(mouse) {
-                mouse.accepted = true
-        
-                const blob = focusManager.focusedBlob
 
-                if (blob && blob.isBlobFocused)
-                    blob.unfocusBlob()
+            acceptedButtons:
+                Qt.LeftButton |
+                Qt.MiddleButton |
+                Qt.RightButton
+
+            hoverEnabled:
+                false
+
+            onPressed: function(mouse) {
+                root.dismissAllBlobs()
+
+                mouse.accepted =
+                    true
             }
         }
         // bottom left
         MouseArea {
             id: blBlobMouseArea
+            z: -10
             // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
  
             x: 0
             y: frameWindow.height - height
 
-            width: root.isBlBlobActive || root.blBlobProgress > 0?
+            width: root.isBlBlobActive || root.isBlBlobAlwaysActive || (root.blBlobProgress > 0 && blBlobContent.activeModule !== "")?
                     root.innerGeometry().bl*0.5 +
                     root.frameSide("left") +
                     blBlobContent.width + root.extendedHoverDetectionSize
                   : root.hoverDetectionSize
 
-            height: root.isBlBlobActive || root.blBlobProgress > 0?
+            height: root.isBlBlobActive || root.isBlBlobAlwaysActive || (root.blBlobProgress > 0 && blBlobContent.activeModule !== "")?
                 root.innerGeometry().bl*0.5 +
                 root.frameSide("bottom") +
                 blBlobContent.height  + root.extendedHoverDetectionSize
@@ -1874,15 +1915,16 @@ Scope {
         // bottom right
         MouseArea {
             id: brBlobMouseArea
+            z: -10
             // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
             x: frameWindow.width - width
             y: frameWindow.height - height
-            width: root.isBrBlobActive || root.brBlobProgress > 0?
+            width: root.isBrBlobActive || root.isBrBlobAlwaysActive || (root.brBlobProgress > 0 && brBlobContent.activeModule !== "")?
                     root.innerGeometry().br*0.5 +
                     root.frameSide("right") +
                     brBlobContent.width + root.extendedHoverDetectionSize
                   : root.hoverDetectionSize
-            height: root.isBrBlobActive || root.brBlobProgress > 0?
+            height: root.isBrBlobActive || root.isBrBlobAlwaysActive || (root.brBlobProgress > 0 && brBlobContent.activeModule !== "")?
             root.innerGeometry().br*0.5 +
                 root.frameSide("bottom") +
                 brBlobContent.height + root.extendedHoverDetectionSize
@@ -1935,14 +1977,15 @@ Scope {
         // bottom center
         MouseArea {
             id: bcBlobMouseArea
+            z: -10
             // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
             x: root.innerGeometry().x + (root.innerGeometry().width - width) * 0.5
             y: frameWindow.height - height
-            width: root.isBcBlobActive || root.bcBlobProgress > 0?
+            width: root.isBcBlobActive || root.isBcBlobAlwaysActive || (root.bcBlobProgress > 0 && bcBlobContent.activeModule !== "")?
                     (Math.max(Math.max(0, Math.min(bcBlobContent.width*0.5, root.cornerSize("bottomLeft") * 0.5)) + Math.max(0, Math.min(bcBlobContent.width*0.5, root.cornerSize("bottomRight") * 0.5)), 2*root.blobMinMargin)/2)*root.bcBlobProgress +
                     bcBlobContent.width + root.extendedHoverDetectionSize/2
                   : _length
-            height: root.isBcBlobActive || root.bcBlobProgress > 0?
+            height: root.isBcBlobActive || root.isBcBlobAlwaysActive || (root.bcBlobProgress > 0 && bcBlobContent.activeModule !== "")?
                     (Math.max(Math.max(0, Math.min(bcBlobContent.width*0.5, root.cornerSize("bottomLeft") * 0.5)) + Math.max(0, Math.min(bcBlobContent.width*0.5, root.cornerSize("bottomRight") * 0.5)), 2*root.blobMinMargin)/2)*root.bcBlobProgress +
                     root.frameSide("bottom") +
                     bcBlobContent.height + root.extendedHoverDetectionSize/4
@@ -1979,15 +2022,16 @@ Scope {
         // top left
         MouseArea {
             id: tlBlobMouseArea
+            z: -10
             // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
             x: 0
             y: 0
-            width: root.isTlBlobActive || root.tlBlobProgress > 0?
+            width: root.isTlBlobActive || root.isTlBlobAlwaysActive || (root.tlBlobProgress > 0 && tlBlobContent.activeModule !== "")?
                     root.innerGeometry().tl*0.5 +
                     root.frameSide("left") +
                     tlBlobContent.width + root.extendedHoverDetectionSize
                   : root.innerGeometry().x
-            height: root.isTlBlobActive || root.tlBlobProgress > 0?
+            height: root.isTlBlobActive || root.isTlBlobAlwaysActive || (root.tlBlobProgress > 0 && tlBlobContent.activeModule !== "")?
                       root.innerGeometry().tl*0.5 +
                       root.frameSide("top") +
                       tlBlobContent.height + root.extendedHoverDetectionSize
@@ -2038,15 +2082,16 @@ Scope {
         // top right
         MouseArea {
             id: trBlobMouseArea
+            z: -10
             // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
             x: frameWindow.width - width
             y: 0
-            width: root.isTrBlobActive || root.trBlobProgress > 0?
+            width: root.isTrBlobActive || root.isTrBlobAlwaysActive || (root.trBlobProgress > 0 && trBlobContent.activeModule !== "")?
                     root.innerGeometry().tr*0.5 +
                     root.frameSide("right") +
                     trBlobContent.width + root.extendedHoverDetectionSize
                   : root.hoverDetectionSize
-            height: root.isTrBlobActive || root.trBlobProgress > 0?
+            height: root.isTrBlobActive || root.isTrBlobAlwaysActive || (root.trBlobProgress > 0 && trBlobContent.activeModule !== "")?
                       root.innerGeometry().tr*0.5 +
                       root.frameSide("top") +
                       trBlobContent.height + root.extendedHoverDetectionSize
@@ -2099,14 +2144,15 @@ Scope {
         // top center
         MouseArea {
             id: tcBlobMouseArea
+            z: -10
             // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
             x: root.innerGeometry().x + (root.innerGeometry().width - width) * 0.5
             y: 0
-            width: root.isTcBlobActive || root.tcBlobProgress > 0?
+            width: root.isTcBlobActive || root.isTcBlobAlwaysActive || (root.tcBlobProgress > 0 && tcBlobContent.activeModule !== "")?
                   (Math.max(Math.max(0, Math.min(tcBlobContent.width*0.5, root.cornerSize("topLeft") * 0.5)) + Math.max(0, Math.min(tcBlobContent.width*0.5, root.cornerSize("topRight") * 0.5)), 2*root.blobMinMargin)/2)*root.tcBlobProgress +
                   tcBlobContent.width + root.extendedHoverDetectionSize 
                 : _length
-            height: root.isTcBlobActive || root.tcBlobProgress > 0?
+            height: root.isTcBlobActive || root.isTcBlobAlwaysActive || (root.tcBlobProgress > 0 && tcBlobContent.activeModule !== "")?
                   (Math.max(Math.max(0, Math.min(tcBlobContent.width*0.5, root.cornerSize("topLeft") * 0.5)) + Math.max(0, Math.min(tcBlobContent.width*0.5, root.cornerSize("topRight") * 0.5)), 2*root.blobMinMargin)/2)*root.tcBlobProgress +
                     root.frameSide("top") +
                     tcBlobContent.height + root.extendedHoverDetectionSize / 2
@@ -2143,14 +2189,15 @@ Scope {
         // left
         MouseArea {
             id: leftBlobMouseArea
+            z: -10
             // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
             x: 0
             y: root.innerGeometry().y + (root.innerGeometry().height - height) * 0.5
-            height: root.isLeftBlobActive || root.leftBlobProgress > 0?
+            height: root.isLeftBlobActive || root.isLeftBlobAlwaysActive || (root.leftBlobProgress > 0 && leftBlobContent.activeModule !== "")?
                     (Math.max(Math.max(0, Math.min(leftBlobContent.width*0.5, root.cornerSize("bottomLeft") * 0.5)) + Math.max(0, Math.min(leftBlobContent.width*0.5, root.cornerSize("topLeft") * 0.5)), 2*root.blobMinMargin)/2)*root.leftBlobProgress +
                     leftBlobContent.height + root.extendedHoverDetectionSize
                   : _length
-            width: root.isLeftBlobActive || root.leftBlobProgress > 0?
+            width: root.isLeftBlobActive || root.isLeftBlobAlwaysActive || (root.leftBlobProgress > 0 && leftBlobContent.activeModule !== "")?
                     (Math.max(Math.max(0, Math.min(leftBlobContent.width*0.5, root.cornerSize("bottomLeft") * 0.5)) + Math.max(0, Math.min(leftBlobContent.width*0.5, root.cornerSize("topLeft") * 0.5)), 2*root.blobMinMargin)/2)*root.leftBlobProgress +
                     root.frameSide("left") +
                     leftBlobContent.width + root.extendedHoverDetectionSize / 2
@@ -2187,15 +2234,15 @@ Scope {
         // right
         MouseArea {
             id: rightBlobMouseArea
+            z: -10
             // Rectangle{color:"#3fffffff";visible:true;anchors.fill:parent}
             x: frameWindow.width - width
             y: root.innerGeometry().y + (root.innerGeometry().height - height) * 0.5
-            // z:200
-            height: root.isRightBlobActive || root.rightBlobProgress > 0?
+            height: root.isRightBlobActive || root.isRightBlobAlwaysActive || (root.rightBlobProgress > 0 && rightBlobContent.activeModule !== "")?
                     (Math.max(Math.max(0, Math.min(rightBlobContent.width*0.5, root.cornerSize("bottomRight") * 0.5)) + Math.max(0, Math.min(rightBlobContent.width*0.5, root.cornerSize("topRight") * 0.5)), 2*root.blobMinMargin)/2)*root.rightBlobProgress +
                     rightBlobContent.height + root.extendedHoverDetectionSize
                   : _length
-            width: root.isRightBlobActive || root.rightBlobProgress > 0?
+            width: root.isRightBlobActive || root.isRightBlobAlwaysActive || (root.rightBlobProgress > 0 && rightBlobContent.activeModule !== "")?
                       root.frameSide("right") +
                       (Math.max(Math.max(0, Math.min(rightBlobContent.width*0.5, root.cornerSize("bottomRight") * 0.5)) + Math.max(0, Math.min(rightBlobContent.width*0.5, root.cornerSize("topRight") * 0.5)), 2*root.blobMinMargin)/2)*root.rightBlobProgress +
                       rightBlobContent.width + root.extendedHoverDetectionSize / 2

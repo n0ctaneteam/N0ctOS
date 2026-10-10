@@ -18,4 +18,5 @@ singleton Media 1.0 Media.qml
 singleton Notifications 1.0 Notifications.qml
 singleton SystemTray 1.0 SystemTray.qml
 singleton Animations 1.0 Animations.qml
+singleton SoundFX 1.0 SoundFX.qml
 

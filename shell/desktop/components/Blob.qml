@@ -4,6 +4,8 @@ import Quickshell
 import Quickshell.Io
 import "../../core/ui"
 
+import qs.services
+
 FocusScope {
     id: root
 
@@ -460,6 +462,9 @@ FocusScope {
         moduleLoader.source = info.modulePath
         root.moduleSelected(id)
 
+        SoundFX.play("hover")
+        
+
         return true
     }
 
@@ -670,6 +675,8 @@ FocusScope {
         root.switching = false
         root.modifierHeld = false
         root.selectionModule = root.activeModule
+
+        SoundFX.play("hover")
     }
 
     function mouseSelect(id) {
@@ -1056,13 +1063,18 @@ FocusScope {
 
     // ============================================================
     // RIGHT CLICK
+    //
+    // The shield sits BELOW module content on purpose: a module
+    // MouseArea that accepts right-click consumes the event first
+    // (e.g. tray item menus). Only right-clicks nothing in the
+    // module handles fall through to the blob switcher.
     // ============================================================
 
     MouseArea {
         id: rightClickShield
 
         anchors.fill: parent
-        z: 200
+        z: 5
 
         visible:
             !root.showSelector &&
@@ -1124,8 +1136,15 @@ FocusScope {
         function onRegistryChanged() {
             // Retry activation for a single-module blob while it's
             // hovered but the module wasn't registered yet.
-            if (root.hovered && !root.moduleSpecified && root.moduleIds.length === 1)
-                root.activateSingleModule()
+            //
+            // Marks transient like enterHover does: otherwise the
+            // blob stays selected but unfocused after the cursor
+            // leaves, keeping the fullscreen mask up forever and
+            // swallowing every replay below.
+            if (root.hovered && !root.moduleSpecified && root.moduleIds.length === 1) {
+                if (root.activateSingleModule())
+                    root.transientHover = true
+            }
         }
     }
 

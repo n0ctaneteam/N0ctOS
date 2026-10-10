@@ -1,0 +1,7 @@
+{
+    "id": "systemtray",
+    "name": "System Tray",
+    "icon": "󰇘",
+    "module": "SystemTray.qml",
+    "settings": "Settings.qml"
+}

@@ -2,6 +2,7 @@ pragma Singleton
 
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 
@@ -32,6 +33,18 @@ Singleton {
 
     function close() {
         internalRoot.close()
+    }
+
+    /*
+     * Re-measure and reposition the currently open menu.
+     *
+     * Content can arrive after the menu is already visible
+     * (tray DBus menus load asynchronously), so callers
+     * re-invoke this when new entries land instead of
+     * reopening the menu.
+     */
+    function refresh() {
+        internalRoot.refreshOpenMenu()
     }
 
     function notifyHovered(
@@ -102,6 +115,9 @@ Singleton {
         WlrLayershell.layer:
             WlrLayer.Overlay
 
+        WlrLayershell.keyboardFocus:
+            WlrKeyboardFocus.OnDemand
+
         anchors {
             top: true
             bottom: true
@@ -137,6 +153,9 @@ Singleton {
 
         WlrLayershell.layer:
             WlrLayer.Top
+
+        WlrLayershell.keyboardFocus:
+            WlrKeyboardFocus.OnDemand
 
         anchors {
             top: true
@@ -174,6 +193,9 @@ Singleton {
         WlrLayershell.layer:
             WlrLayer.Bottom
 
+        WlrLayershell.keyboardFocus:
+            WlrKeyboardFocus.OnDemand
+
         anchors {
             top: true
             bottom: true
@@ -209,6 +231,9 @@ Singleton {
 
         WlrLayershell.layer:
             WlrLayer.Background
+
+        WlrLayershell.keyboardFocus:
+            WlrKeyboardFocus.OnDemand
 
         anchors {
             top: true
@@ -705,6 +730,11 @@ Singleton {
             internalRoot.requestGeneration +=
                 1
 
+            internalRoot.replayPressArmed =
+                false
+
+            replayTimer.stop()
+
             internalRoot.requestedComponent =
                 component
 
@@ -1007,6 +1037,20 @@ Singleton {
 
             if (!level.activeItem)
                 return
+
+            /*
+             * Delegates may have arrived between instantiation
+             * and resolve (async content): bind before measure.
+             */
+            internalRoot.bindTree(
+                level.activeItem,
+
+                0,
+
+                internalRoot.parentAt(
+                    0
+                )
+            )
 
             level.refreshGeometry()
 
@@ -1822,6 +1866,52 @@ Singleton {
                              * ContextMenuObj MouseAreas.
                              */
                             wheel.accepted =
+                                true
+                        }
+                    }
+
+                    // =================================================
+                    // AUX-CLICK DISMISS
+                    // =================================================
+                    //
+                    // Right/middle press anywhere on a level closes
+                    // the menu instead of repositioning it.
+                    //
+                    // Left presses fall straight through (they are
+                    // not in acceptedButtons), so item activation,
+                    // hover and wheel scrolling are unaffected.
+                    //
+                    // Outside right/middle presses reach the
+                    // fullscreen catcher below instead, which
+                    // dismisses and replays them.
+                    // =================================================
+
+                    MouseArea {
+                        id: auxDismiss
+
+                        anchors.fill:
+                            parent
+
+                        enabled:
+                            Boolean(
+                                level.opened &&
+                                internalRoot.menuOpen
+                            )
+
+                        acceptedButtons:
+                            Qt.RightButton |
+                            Qt.MiddleButton
+
+                        hoverEnabled:
+                            false
+
+                        z:
+                            1200
+
+                        onPressed: function(mouse) {
+                            internalRoot.close()
+
+                            mouse.accepted =
                                 true
                         }
                     }
@@ -3567,6 +3657,22 @@ Singleton {
                         return
                     }
 
+                    /*
+                     * Delegates may have arrived between submenu
+                     * instantiation and display (async DBus
+                     * children): bind before measure, otherwise
+                     * their clicks and hover stay dead.
+                     */
+                    internalRoot.bindTree(
+                        level.activeItem,
+
+                        depth,
+
+                        internalRoot.parentAt(
+                            depth
+                        )
+                    )
+
                     level.refreshGeometry()
 
                     level.positionSubmenu(
@@ -3894,6 +4000,20 @@ Singleton {
                 return
             }
 
+            /*
+             * Invalidate in-flight cursor/monitor queries.
+             *
+             * Dismissal can race an open() whose hyprctl
+             * results have not arrived yet. Without this,
+             * tryResolveOpen() would resurrect the menu
+             * right after it was dismissed.
+             */
+            internalRoot.requestGeneration +=
+                1
+
+            internalRoot.replayPressArmed =
+                false
+
             internalRoot.menuOpen =
                 false
 
@@ -3915,52 +4035,353 @@ Singleton {
         }
 
         // ========================================================
-        // RIGHT-CLICK RECALL
+        // REFRESH OPEN MENU
         // ========================================================
 
-        MouseArea {
-            id: recallArea
+        function refreshOpenMenu() {
+            if (
+                !internalRoot.menuOpen
+            ) {
+                return
+            }
 
-            anchors.fill:
-                parent
+            const level =
+                internalRoot.levelAt(0)
 
-            enabled:
-                Boolean(
-                    internalRoot.menuOpen
-                )
-
-            acceptedButtons:
-                Qt.RightButton
+            if (
+                !level ||
+                !level.activeItem
+            ) {
+                return
+            }
 
             /*
-             * Below actual menu levels.
-             *
-             * The menu levels have z >= 1000.
+             * Delegates created after the initial load (async
+             * DBus tray children) were never tree-bound, so
+             * their clicks and hover are silently ignored.
+             * Binding is idempotent: already-bound objects
+             * just get the same values again.
              */
-            z:
-                1
+            internalRoot.bindTree(
+                level.activeItem,
 
-            hoverEnabled:
-                false
+                0,
 
-            onPressed: function(mouse) {
-                internalRoot.open(
-                    internalRoot.requestedComponent,
+                internalRoot.parentAt(
+                    0
+                )
+            )
 
-                    internalRoot.requestedLayer
+            /*
+             * Only reposition when the content actually grew:
+             * re-snapping to the open-time cursor on every
+             * refresh would yank the menu out from under a
+             * moving pointer.
+             */
+            const oldRootWidth =
+                level.naturalContentWidth
+
+            const oldRootHeight =
+                level.naturalContentHeight
+
+            level.refreshGeometry()
+
+            if (
+                (
+                    level.naturalContentWidth !==
+                    oldRootWidth ||
+                    level.naturalContentHeight !==
+                    oldRootHeight
+                ) &&
+                internalRoot.targetScreen &&
+                internalRoot.targetMonitor
+            ) {
+                level.positionRoot(
+                    false
+                )
+            }
+
+            if (
+                !level.opened
+            ) {
+                level.openVisible()
+            }
+
+            /*
+             * Submenu levels whose DBus children arrived after
+             * they opened (tray submenus) get re-measured too.
+             */
+            for (
+                let depth = 1;
+                depth < internalRoot.maxDepth;
+                ++depth
+            ) {
+                const sub =
+                    internalRoot.levelAt(
+                        depth
+                    )
+
+                if (
+                    !sub ||
+                    !sub.opened ||
+                    !sub.activeItem
+                ) {
+                    continue
+                }
+
+                internalRoot.bindTree(
+                    sub.activeItem,
+
+                    depth,
+
+                    internalRoot.parentAt(
+                        depth
+                    )
                 )
 
-                mouse.accepted =
-                    true
+                const oldSubWidth =
+                    sub.naturalContentWidth
+
+                const oldSubHeight =
+                    sub.naturalContentHeight
+
+                sub.refreshGeometry()
+
+                const parent =
+                    internalRoot.parentAt(
+                        depth
+                    )
+
+                /*
+                 * Same no-yank rule as the root level: only
+                 * reposition on real content growth.
+                 */
+                if (
+                    parent &&
+                    (
+                        sub.naturalContentWidth !==
+                        oldSubWidth ||
+                        sub.naturalContentHeight !==
+                        oldSubHeight
+                    )
+                ) {
+                    sub.positionSubmenu(
+                        parent
+                    )
+                }
             }
         }
 
         // ========================================================
-        // OUTSIDE CLICK
+        // OUTSIDE DISMISSAL + REPLAY
+        // ========================================================
+        //
+        // The window owns the whole screen while open, so every
+        // press outside the open levels lands in the catcher
+        // below first (levels handle their own input above it).
+        //
+        // Dismiss + pass-through, in that order:
+        //
+        // 1. Release closes the menu immediately (snappy) and,
+        //    for a clean click, arms a replay.
+        // 2. After a short unmap gap, wlrctl re-emits the input
+        //    below through the virtual-pointer protocol, so the
+        //    surface underneath receives a complete click or
+        //    scroll as if the menu had never been there.
+        //
+        // Release-gating (not press-gating) keeps drags safe: a
+        // press that travels or holds only closes, never
+        // replays, so move-window/select/drag-cancel gestures
+        // cannot be corrupted by a phantom click.
+        //
+        // Presses on the menu itself (items, scrollbar,
+        // submenu pins) never reach the catcher, so they never
+        // replay and can never double-fire below.
+        //
+        // Also closing: workspace switch, Escape (needs window
+        // focus), item activation, aux-click on a level.
+        //
+        // Focus-only changes (Alt+Tab, scripted focus, hover
+        // travel) never dismiss on purpose, and roaming away
+        // never closes the menu either.
+        //
+        // If wlrctl is missing or the replay lands before the
+        // unmap completes, that replay is silently lost and the
+        // outcome is a plain modal close — never an error.
         // ========================================================
 
+        // --------------------------------------------------------
+        // REPLAY STATE
+        // --------------------------------------------------------
+        //
+        // replayScrollFlipY:
+        //     Qt reports wheel-up as positive angleDelta.y while
+        //     the Wayland axis convention takes positive
+        //     vertical as down. Flip this to false if live
+        //     testing shows inverted scrolling.
+        // --------------------------------------------------------
+
+        property string replayPressButton:
+            ""
+
+        property real replayPressX:
+            0
+
+        property real replayPressY:
+            0
+
+        property real replayPressMs:
+            0
+
+        property bool replayPressArmed:
+            false
+
+        property string pendingReplayButton:
+            ""
+
+        property real pendingScrollDX:
+            0
+
+        property real pendingScrollDY:
+            0
+
+        property real replayMaxDist:
+            8
+
+        property int replayMaxMs:
+            350
+
+        property int replayDelay:
+            10
+
+        property real replayScrollScale:
+            1.0
+
+        property bool replayScrollFlipY:
+            true
+
+        function replayButtonName(
+            button
+        ) {
+            if (
+                button === Qt.RightButton
+            ) {
+                return "right"
+            }
+
+            if (
+                button === Qt.MiddleButton
+            ) {
+                return "middle"
+            }
+
+            return "left"
+        }
+
+        function scheduleClickReplay(
+            buttonName
+        ) {
+            internalRoot.pendingReplayButton =
+                buttonName
+
+            internalRoot.pendingScrollDX =
+                0
+
+            internalRoot.pendingScrollDY =
+                0
+
+            replayTimer.restart()
+        }
+
+        function scheduleScrollReplay(
+            dx,
+            dy
+        ) {
+            internalRoot.pendingReplayButton =
+                ""
+
+            internalRoot.pendingScrollDX =
+                Number(dx) || 0
+
+            internalRoot.pendingScrollDY =
+                Number(dy) || 0
+
+            replayTimer.restart()
+        }
+
+        // --------------------------------------------------------
+        // REPLAY TIMER
+        //
+        // Bridges the surface-unmap gap: close() hides the
+        // window synchronously, but the compositor unmaps a
+        // frame or two later. Replaying only after this gap
+        // guarantees the synthetic input hit-tests below.
+        // --------------------------------------------------------
+
+        Timer {
+            id: replayTimer
+
+            interval:
+                internalRoot.replayDelay
+
+            repeat:
+                false
+
+            onTriggered: {
+                if (
+                    internalRoot.pendingReplayButton !== ""
+                ) {
+                    replayProcess.exec([
+                        "wlrctl",
+                        "pointer",
+                        "click",
+                        internalRoot.pendingReplayButton
+                    ])
+                } else if (
+                    internalRoot.pendingScrollDX !== 0 ||
+                    internalRoot.pendingScrollDY !== 0
+                ) {
+                    replayProcess.exec([
+                        "wlrctl",
+                        "pointer",
+                        "scroll",
+                        String(
+                            Math.round(
+                                internalRoot.pendingScrollDX
+                            )
+                        ),
+                        String(
+                            Math.round(
+                                internalRoot.pendingScrollDY
+                            )
+                        )
+                    ])
+                }
+
+                internalRoot.pendingReplayButton =
+                    ""
+
+                internalRoot.pendingScrollDX =
+                    0
+
+                internalRoot.pendingScrollDY =
+                    0
+            }
+        }
+
+        Process {
+            id: replayProcess
+        }
+
+        // --------------------------------------------------------
+        // OUTSIDE CATCHER
+        //
+        // Below actual menu levels (z >= 1000). Presses on the
+        // menu never reach it; everything else does.
+        // --------------------------------------------------------
+
         MouseArea {
-            id: outsideClick
+            id: replayCatcher
 
             anchors.fill:
                 parent
@@ -3972,7 +4393,8 @@ Singleton {
 
             acceptedButtons:
                 Qt.LeftButton |
-                Qt.MiddleButton
+                Qt.MiddleButton |
+                Qt.RightButton
 
             z:
                 0
@@ -3981,11 +4403,154 @@ Singleton {
                 false
 
             onPressed: function(mouse) {
-                internalRoot.close()
+                internalRoot.replayPressArmed =
+                    true
+
+                internalRoot.replayPressButton =
+                    internalRoot.replayButtonName(
+                        mouse.button
+                    )
+
+                internalRoot.replayPressX =
+                    mouse.x
+
+                internalRoot.replayPressY =
+                    mouse.y
+
+                internalRoot.replayPressMs =
+                    Date.now()
 
                 mouse.accepted =
                     true
             }
+
+            onReleased: function(mouse) {
+                if (
+                    !internalRoot.replayPressArmed
+                ) {
+                    return
+                }
+
+                internalRoot.replayPressArmed =
+                    false
+
+                const elapsed =
+                    Date.now() -
+                    Number(
+                        internalRoot.replayPressMs
+                    )
+
+                const moved =
+                    Math.hypot(
+                        Number(mouse.x) -
+                        Number(
+                            internalRoot.replayPressX
+                        ),
+
+                        Number(mouse.y) -
+                        Number(
+                            internalRoot.replayPressY
+                        )
+                    )
+
+                internalRoot.close()
+
+                if (
+                    elapsed <=
+                        internalRoot.replayMaxMs &&
+                    moved <=
+                        internalRoot.replayMaxDist
+                ) {
+                    internalRoot.scheduleClickReplay(
+                        internalRoot.replayPressButton
+                    )
+                }
+
+                mouse.accepted =
+                    true
+            }
+
+            onWheel: function(wheel) {
+                let dx =
+                    Number(
+                        wheel.angleDelta.x
+                    ) || 0
+
+                let dy =
+                    Number(
+                        wheel.angleDelta.y
+                    ) || 0
+
+                if (
+                    dx === 0 &&
+                    dy === 0
+                ) {
+                    dx =
+                        Number(
+                            wheel.pixelDelta.x
+                        ) || 0
+
+                    dy =
+                        Number(
+                            wheel.pixelDelta.y
+                        ) || 0
+                }
+
+                internalRoot.close()
+
+                if (
+                    dx !== 0 ||
+                    dy !== 0
+                ) {
+                    const vertical =
+                        (
+                            internalRoot.replayScrollFlipY
+                                ? -dy
+                                : dy
+                        ) *
+                        Number(
+                            internalRoot.replayScrollScale
+                        )
+
+                    const horizontal =
+                        dx *
+                        Number(
+                            internalRoot.replayScrollScale
+                        )
+
+                    internalRoot.scheduleScrollReplay(
+                        vertical,
+                        horizontal
+                    )
+                }
+
+                wheel.accepted =
+                    true
+            }
+        }
+
+        Connections {
+            target:
+                Hyprland
+
+            function onFocusedWorkspaceChanged() {
+                if (
+                    internalRoot.menuOpen
+                ) {
+                    internalRoot.close()
+                }
+            }
+        }
+
+        Shortcut {
+            sequence:
+                "Escape"
+
+            enabled:
+                internalRoot.menuOpen
+
+            onActivated:
+                internalRoot.close()
         }
 
         // ========================================================

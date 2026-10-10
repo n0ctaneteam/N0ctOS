@@ -17,7 +17,7 @@ Singleton {
      *
      * Warnings and errors are always emitted.
      */
-    property bool debugLogging: true
+    property bool isDebugLogging: true
 
     // ============================================================
     // PATHS
@@ -44,11 +44,6 @@ Singleton {
     // PATH REGISTRY
     // ============================================================
 
-    /*
-     * Logical key -> resolved physical path.
-     *
-     * homeConfig is always present.
-     */
     property var _paths: ({
         homeConfig:
             root.defaultHomeConfigPath
@@ -64,22 +59,14 @@ Singleton {
     readonly property var pathKeys:
         root._pathKeys
 
-    /*
-     * Incremented whenever the registered path/controller set
-     * changes.
-     *
-     * This gives functions such as _controllerFor() and pathFor()
-     * an explicit reactive dependency.
-     */
     property int _registryRevision: 0
+
+    property var _warnedUnknownKeys: ({})
 
     // ============================================================
     // REACTIVE DOCUMENT STATE
     // ============================================================
 
-    /*
-     * fileKey -> document
-     */
     property var _documents: ({
         homeConfig: {}
     })
@@ -87,13 +74,6 @@ Singleton {
     readonly property var documents:
         root._documents
 
-    /*
-     * Backwards-compatible default document.
-     *
-     * QML automatically generates documentChanged() for this
-     * property. Therefore the store MUST NOT declare a custom
-     * documentChanged signal.
-     */
     readonly property var document:
         root.documentFor(
             root.defaultFileKey
@@ -107,7 +87,7 @@ Singleton {
      * fileKey -> {
      *     ready: bool,
      *     writing: bool,
-     *     dirty: bool,
+     *     writePending: bool,
      *     revision: int
      * }
      */
@@ -115,27 +95,57 @@ Singleton {
         homeConfig: {
             ready: false,
             writing: false,
-            dirty: false,
+            writePending: false,
             revision: 0
         }
+    })
+
+    // ============================================================
+    // UNDO HISTORY
+    // ============================================================
+
+    /*
+     * Maximum history entries per file.
+     * The limit applies to past + future together.
+     */
+    readonly property int historyLimit:
+        100
+
+    /*
+     * fileKey -> { past: [], future: [] }
+     *
+     * Each entry is a compact forward delta.
+     */
+    property var _history: ({
+        homeConfig: {
+            past: [],
+            future: []
+        }
+    })
+
+    /*
+     * fileKey -> clean baseline.
+     */
+    property var _baselines: ({
+        homeConfig: {}
     })
 
     // ============================================================
     // DEFAULT FILE STATE
     // ============================================================
 
-    readonly property bool ready:
-        root.readyFor(
+    readonly property bool isReady:
+        root.isReadyFor(
             root.defaultFileKey
         )
 
-    readonly property bool writing:
-        root.writingFor(
+    readonly property bool isWriting:
+        root.isWritingFor(
             root.defaultFileKey
         )
 
-    readonly property bool dirty:
-        root.dirtyFor(
+    readonly property bool isDirty:
+        root.isDirtyFor(
             root.defaultFileKey
         )
 
@@ -153,23 +163,12 @@ Singleton {
     // CONTROLLER REGISTRY
     // ============================================================
 
-    /*
-     * fileKey -> controller
-     *
-     * The actual FileView / timer / Process objects live inside
-     * these controllers.
-     */
     property var _controllers: ({})
 
     // ============================================================
     // SIGNALS
     // ============================================================
 
-    /*
-     * Do NOT rename documentUpdated() to documentChanged().
-     *
-     * "documentChanged" already belongs to the `document` property.
-     */
     signal externalReload(string fileKey)
     signal saveError(string fileKey, string reason)
     signal documentUpdated(string fileKey)
@@ -187,20 +186,9 @@ Singleton {
         delegate: Item {
             id: controller
 
-            /*
-             * Invisible resource container.
-             *
-             * Item is intentionally used instead of QtObject because
-             * this delegate contains Timer, Process and FileView
-             * children.
-             */
             visible: false
             width: 0
             height: 0
-
-            // ====================================================
-            // IDENTITY
-            // ====================================================
 
             required property var modelData
 
@@ -211,26 +199,40 @@ Singleton {
                 root._paths[controller.fileKey] ||
                 root.defaultHomeConfigPath
 
-            // ====================================================
-            // DIRECTORY STATE
-            // ====================================================
-
-            property bool directoryReady:
+            property bool isDirectoryReady:
                 false
 
-            // ====================================================
-            // WRITE STATE
-            // ====================================================
-
+            /*
+             * writeText = write currently owned by FileView.
+             * queuedWriteText = newest state waiting behind it.
+             */
             property string writeText:
                 ""
 
             property string queuedWriteText:
                 ""
 
-            // ====================================================
-            // EXTERNAL RELOAD DEBOUNCE
-            // ====================================================
+            /*
+             * save() sets this. A mutation after save()
+             * cancels it.
+             */
+            property bool completeSaveWhenIdle:
+                false
+
+            /*
+             * Set on any failed disk write, cleared on success.
+             * Lets save() know when disk is stale and a forced
+             * rewrite is required instead of a sync checkpoint.
+             */
+            property bool writeFailed:
+                false
+
+            /*
+             * Consumed by the next load result.
+             * Distinguishes explicit reload() from watcher reloads.
+             */
+            property bool explicitReloadPending:
+                false
 
             Timer {
                 id: reloadDebounce
@@ -240,13 +242,13 @@ Singleton {
 
                 onTriggered: {
                     if (
-                        root.writingFor(
+                        root._isWritePending(
                             controller.fileKey
                         )
                     ) {
                         root._debug(
                             "WATCH",
-                            "Reload suppressed while writing:",
+                            "Reload suppressed while write pipeline is active:",
                             controller.fileKey
                         )
 
@@ -264,10 +266,6 @@ Singleton {
                     configFile.reload()
                 }
             }
-
-            // ====================================================
-            // DIRECTORY CREATION
-            // ====================================================
 
             Process {
                 id: createDirectory
@@ -294,28 +292,17 @@ Singleton {
                             )
                         )
 
-                        /*
-                         * Preserve the newest pending document.
-                         *
-                         * If a newer queued write exists, do not replace
-                         * it with the older active write.
-                         */
-                        if (
-                            controller.queuedWriteText.length === 0 &&
-                            controller.writeText.length > 0
-                        ) {
-                            controller.queuedWriteText =
-                                controller.writeText
-                        }
-
-                        controller.writeText =
-                            ""
+                        controller.writeText = ""
+                        controller.queuedWriteText = ""
+                        controller.completeSaveWhenIdle = false
+                        controller.writeFailed = true
 
                         root._setFileState(
                             controller.fileKey,
                             {
+                                ready: true,
                                 writing: false,
-                                dirty: true
+                                writePending: false
                             }
                         )
 
@@ -327,8 +314,7 @@ Singleton {
                         return
                     }
 
-                    controller.directoryReady =
-                        true
+                    controller.isDirectoryReady = true
 
                     root._debug(
                         "WRITE",
@@ -343,10 +329,6 @@ Singleton {
                     controller._flushQueuedWrite()
                 }
             }
-
-            // ====================================================
-            // FILE
-            // ====================================================
 
             FileView {
                 id: configFile
@@ -365,14 +347,6 @@ Singleton {
                 // ------------------------------------------------
 
                 onLoaded: {
-                    root._debug(
-                        "LOAD",
-                        "File loaded:",
-                        controller.fileKey,
-                        "->",
-                        controller.filePath
-                    )
-
                     root._handleLoaded(
                         controller,
                         configFile
@@ -380,39 +354,24 @@ Singleton {
                 }
 
                 // ------------------------------------------------
-                // FILE WATCHER
+                // WATCHER
                 // ------------------------------------------------
 
                 onFileChanged: {
-                    root._debug(
-                        "WATCH",
-                        "Filesystem change detected:",
-                        controller.fileKey,
-                        "->",
-                        controller.filePath
-                    )
-
-                    /*
-                     * Ignore changes caused by our own write while
-                     * the write pipeline is still active.
-                     */
                     if (
-                        root.writingFor(
+                        root._isWritePending(
                             controller.fileKey
                         )
                     ) {
                         root._debug(
                             "WATCH",
-                            "Ignoring watcher event from active write:",
+                            "Ignoring watcher event from local write:",
                             controller.fileKey
                         )
 
                         return
                     }
 
-                    /*
-                     * Coalesce rapid editor / atomic-write events.
-                     */
                     reloadDebounce.restart()
                 }
 
@@ -434,28 +393,32 @@ Singleton {
                 // ------------------------------------------------
 
                 onSaved: {
+                    const key =
+                        controller.fileKey
+
                     root._debug(
                         "WRITE",
                         "Write completed:",
-                        controller.fileKey,
+                        key,
                         "->",
                         controller.filePath
                     )
 
+                    controller.writeText = ""
+                    controller.writeFailed = false
+
                     root._setFileState(
-                        controller.fileKey,
+                        key,
                         {
                             ready: true,
-                            writing: false
+                            writing: false,
+                            writePending: false
                         }
                     )
 
-                    controller.writeText =
-                        ""
-
                     /*
-                     * A newer document may have been produced while
-                     * the previous write was active.
+                     * Newer state exists. It must be written before
+                     * save() may establish the clean baseline.
                      */
                     if (
                         controller.queuedWriteText.length > 0
@@ -463,14 +426,7 @@ Singleton {
                         const nextText =
                             controller.queuedWriteText
 
-                        controller.queuedWriteText =
-                            ""
-
-                        root._debug(
-                            "WRITE",
-                            "Writing queued latest state:",
-                            controller.fileKey
-                        )
+                        controller.queuedWriteText = ""
 
                         controller._startWrite(
                             nextText
@@ -479,14 +435,30 @@ Singleton {
                         return
                     }
 
-                    root._setFileState(
-                        controller.fileKey,
-                        {
-                            ready: true,
-                            writing: false,
-                            dirty: false
-                        }
-                    )
+                    /*
+                     * Only an explicit save() can establish a new
+                     * clean baseline.
+                     */
+                    if (
+                        controller.completeSaveWhenIdle
+                    ) {
+                        controller.completeSaveWhenIdle = false
+
+                        root._setBaseline(
+                            key,
+                            root.documentFor(key)
+                        )
+
+                        root._clearHistory(
+                            key
+                        )
+
+                        root._debug(
+                            "WRITE",
+                            "Explicit save completed; baseline/history reset:",
+                            key
+                        )
+                    }
                 }
 
                 // ------------------------------------------------
@@ -496,6 +468,9 @@ Singleton {
                 onSaveFailed:
                     function(error) {
 
+                    const key =
+                        controller.fileKey
+
                     const reason =
                         FileViewError.toString(
                             error
@@ -504,37 +479,33 @@ Singleton {
                     root._warn(
                         "WRITE",
                         "Write failed:",
-                        controller.fileKey,
+                        key,
                         "->",
                         controller.filePath,
                         reason
                     )
 
                     /*
-                     * NEVER overwrite a newer queued state with the
-                     * older state that was being written.
+                     * Never retain stale serialized data after a
+                     * failed write. A later save() serializes the
+                     * current in-memory document again.
                      */
-                    if (
-                        controller.queuedWriteText.length === 0 &&
-                        controller.writeText.length > 0
-                    ) {
-                        controller.queuedWriteText =
-                            controller.writeText
-                    }
-
-                    controller.writeText =
-                        ""
+                    controller.writeText = ""
+                    controller.queuedWriteText = ""
+                    controller.completeSaveWhenIdle = false
+                    controller.writeFailed = true
 
                     root._setFileState(
-                        controller.fileKey,
+                        key,
                         {
+                            ready: true,
                             writing: false,
-                            dirty: true
+                            writePending: false
                         }
                     )
 
                     root.saveError(
-                        controller.fileKey,
+                        key,
                         reason
                     )
                 }
@@ -584,34 +555,25 @@ Singleton {
                 }
 
                 if (
-                    root.writingFor(
+                    root.isWritingFor(
                         controller.fileKey
                     )
                 ) {
-                    /*
-                     * Replace the queued state with the latest state.
-                     */
                     controller.queuedWriteText =
                         text
 
                     root._setFileState(
                         controller.fileKey,
                         {
-                            dirty: true
+                            writePending: true
                         }
-                    )
-
-                    root._debug(
-                        "WRITE",
-                        "Write already active; latest state queued:",
-                        controller.fileKey
                     )
 
                     return true
                 }
 
                 if (
-                    !controller.directoryReady
+                    !controller.isDirectoryReady
                 ) {
                     controller.queuedWriteText =
                         text
@@ -619,27 +581,13 @@ Singleton {
                     root._setFileState(
                         controller.fileKey,
                         {
-                            dirty: true
+                            writePending: true
                         }
-                    )
-
-                    root._debug(
-                        "WRITE",
-                        "Directory missing; write queued:",
-                        controller.fileKey,
-                        "->",
-                        controller.filePath
                     )
 
                     if (
                         !createDirectory.running
                     ) {
-                        root._debug(
-                            "WRITE",
-                            "Creating config directory:",
-                            controller.fileKey
-                        )
-
                         createDirectory.running =
                             true
                     }
@@ -655,7 +603,7 @@ Singleton {
                     {
                         ready: true,
                         writing: true,
-                        dirty: true
+                        writePending: true
                     }
                 )
 
@@ -676,7 +624,7 @@ Singleton {
 
             function _flushQueuedWrite() {
                 if (
-                    root.writingFor(
+                    root.isWritingFor(
                         controller.fileKey
                     )
                 ) {
@@ -707,30 +655,6 @@ Singleton {
                 if (!serialized)
                     return false
 
-                if (
-                    root.writingFor(
-                        controller.fileKey
-                    )
-                ) {
-                    controller.queuedWriteText =
-                        serialized
-
-                    root._setFileState(
-                        controller.fileKey,
-                        {
-                            dirty: true
-                        }
-                    )
-
-                    root._debug(
-                        "WRITE",
-                        "Save queued behind active write:",
-                        controller.fileKey
-                    )
-
-                    return true
-                }
-
                 return controller._startWrite(
                     serialized
                 )
@@ -740,18 +664,21 @@ Singleton {
                 reloadDebounce.stop()
 
                 if (
-                    root.writingFor(
+                    root._isWritePending(
                         controller.fileKey
                     )
                 ) {
                     root._warn(
                         "LOAD",
-                        "Reload rejected while writing:",
+                        "Reload rejected while write pipeline is active:",
                         controller.fileKey
                     )
 
                     return false
                 }
+
+                controller.explicitReloadPending =
+                    true
 
                 root._debug(
                     "LOAD",
@@ -801,22 +728,13 @@ Singleton {
                 object.filePath
             )
 
-            /*
-             * A write may have happened before the controller was
-             * instantiated. If so, make sure it gets persisted.
-             */
             const state =
                 root._stateFor(key)
 
             if (
-                state.dirty
+                state.writePending ||
+                object.queuedWriteText.length > 0
             ) {
-                root._debug(
-                    "WRITE",
-                    "Controller inherited pending dirty state:",
-                    key
-                )
-
                 object.queueSave()
             }
         }
@@ -839,11 +757,7 @@ Singleton {
                     root._controllers
                 )
 
-            if (
-                nextControllers[key] !== undefined
-            ) {
-                delete nextControllers[key]
-            }
+            delete nextControllers[key]
 
             root._controllers =
                 nextControllers
@@ -870,15 +784,15 @@ Singleton {
         // --------------------------------------------------------
 
         function isReady(): bool {
-            return root.ready
+            return root.isReady
         }
 
         function isWriting(): bool {
-            return root.writing
+            return root.isWriting
         }
 
         function isDirty(): bool {
-            return root.dirty
+            return root.isDirty
         }
 
         function getPath(): string {
@@ -896,7 +810,7 @@ Singleton {
         function isReadyAt(
             fileKey: string
         ): bool {
-            return root.readyFor(
+            return root.isReadyFor(
                 fileKey
             )
         }
@@ -904,7 +818,7 @@ Singleton {
         function isWritingAt(
             fileKey: string
         ): bool {
-            return root.writingFor(
+            return root.isWritingFor(
                 fileKey
             )
         }
@@ -912,7 +826,7 @@ Singleton {
         function isDirtyAt(
             fileKey: string
         ): bool {
-            return root.dirtyFor(
+            return root.isDirtyFor(
                 fileKey
             )
         }
@@ -957,21 +871,21 @@ Singleton {
 
         function registerPath(
             fileKey: string,
-            path: string
+            fsPath: string
         ): bool {
             return root.registerPath(
                 fileKey,
-                path
+                fsPath
             )
         }
 
         function updatePath(
             fileKey: string,
-            path: string
+            fsPath: string
         ): bool {
             return root.updatePath(
                 fileKey,
-                path
+                fsPath
             )
         }
 
@@ -988,39 +902,67 @@ Singleton {
         // --------------------------------------------------------
 
         function get(
-            path: string
+            dataPath: string
         ): string {
             return root._ipcGet(
-                path,
+                dataPath,
                 root.defaultFileKey
             )
         }
 
         function getAt(
-            path: string,
+            dataPath: string,
             fileKey: string
         ): string {
             return root._ipcGet(
-                path,
+                dataPath,
+                fileKey
+            )
+        }
+
+        function getDocument(): string {
+            return root._ipcGetDocument(
+                root.defaultFileKey
+            )
+        }
+
+        function getDocumentAt(
+            fileKey: string
+        ): string {
+            return root._ipcGetDocument(
+                fileKey
+            )
+        }
+
+        function history(): string {
+            return root._ipcHistory(
+                root.defaultFileKey
+            )
+        }
+
+        function historyAt(
+            fileKey: string
+        ): string {
+            return root._ipcHistory(
                 fileKey
             )
         }
 
         function has(
-            path: string
+            dataPath: string
         ): bool {
             return root.has(
-                path,
+                dataPath,
                 root.defaultFileKey
             )
         }
 
         function hasAt(
-            path: string,
+            dataPath: string,
             fileKey: string
         ): bool {
             return root.has(
-                path,
+                dataPath,
                 fileKey
             )
         }
@@ -1030,66 +972,112 @@ Singleton {
         // --------------------------------------------------------
 
         function setJson(
-            path: string,
+            dataPath: string,
             json: string
         ): bool {
             return root._ipcSetJson(
-                path,
+                dataPath,
                 json,
                 root.defaultFileKey
             )
         }
 
         function setJsonAt(
-            path: string,
+            dataPath: string,
             json: string,
             fileKey: string
         ): bool {
             return root._ipcSetJson(
-                path,
+                dataPath,
                 json,
                 fileKey
             )
         }
 
         function updateJson(
-            section: string,
+            dataPath: string,
             json: string
         ): bool {
             return root._ipcUpdateJson(
-                section,
+                dataPath,
                 json,
                 root.defaultFileKey
             )
         }
 
         function updateJsonAt(
-            section: string,
+            dataPath: string,
             json: string,
             fileKey: string
         ): bool {
             return root._ipcUpdateJson(
-                section,
+                dataPath,
                 json,
                 fileKey
             )
         }
 
         function remove(
-            path: string
+            dataPath: string
         ): bool {
             return root.remove(
-                path,
+                dataPath,
                 root.defaultFileKey
             )
         }
 
         function removeAt(
-            path: string,
+            dataPath: string,
             fileKey: string
         ): bool {
             return root.remove(
-                path,
+                dataPath,
+                fileKey
+            )
+        }
+
+        // --------------------------------------------------------
+        // Undo history
+        // --------------------------------------------------------
+
+        function undo(): bool {
+            return root.undo(
+                root.defaultFileKey
+            )
+        }
+
+        function undoAt(
+            fileKey: string
+        ): bool {
+            return root.undo(
+                fileKey
+            )
+        }
+
+        function redo(): bool {
+            return root.redo(
+                root.defaultFileKey
+            )
+        }
+
+        function redoAt(
+            fileKey: string
+        ): bool {
+            return root.redo(
+                fileKey
+            )
+        }
+
+        function revert(): bool {
+            return root.revert(
+                root.defaultFileKey
+            )
+        }
+
+        function revertAt(
+            fileKey: string
+        ): bool {
+            return root.revert(
                 fileKey
             )
         }
@@ -1135,7 +1123,9 @@ Singleton {
     // PATH HELPERS
     // ============================================================
 
-    function _normalizeFileKey(fileKey) {
+    function _normalizeFileKey(
+        fileKey
+    ) {
         if (
             fileKey === undefined ||
             fileKey === null
@@ -1148,7 +1138,9 @@ Singleton {
         ).trim()
     }
 
-    function _resolveFileKey(fileKey) {
+    function _resolveFileKey(
+        fileKey
+    ) {
         const paths =
             root._paths
 
@@ -1160,32 +1152,49 @@ Singleton {
         }
 
         const key =
-            String(fileKey).trim()
+            String(
+                fileKey
+            ).trim()
 
-        if (key.length === 0)
+        if (
+            key.length === 0
+        ) {
             return root.defaultFileKey
+        }
 
         if (
             paths[key] === undefined
         ) {
-            /*
-             * IMPORTANT:
-             * Configuration operations intentionally fall back to
-             * homeConfig for unknown keys.
-             *
-             * Registry CRUD does NOT use this function.
-             */
+            if (
+                root._warnedUnknownKeys[key] === undefined
+            ) {
+                const nextWarned =
+                    root._copyObject(
+                        root._warnedUnknownKeys
+                    )
+
+                nextWarned[key] = true
+
+                root._warnedUnknownKeys =
+                    nextWarned
+
+                root._warn(
+                    "PATH",
+                    "Unknown fileKey, falling back to",
+                    root.defaultFileKey + ":",
+                    key
+                )
+            }
+
             return root.defaultFileKey
         }
 
         return key
     }
 
-    function _controllerFor(fileKey) {
-        /*
-         * Explicitly depend on the registry revision so bindings
-         * reevaluate when a controller is added/removed.
-         */
+    function _controllerFor(
+        fileKey
+    ) {
         const registryRevision =
             root._registryRevision
 
@@ -1203,15 +1212,22 @@ Singleton {
         )
     }
 
-    function _directoryFor(path) {
+    function _directoryFor(
+        path
+    ) {
         const value =
-            String(path || "")
+            String(
+                path || ""
+            )
 
         const slash =
             value.lastIndexOf("/")
 
-        if (slash <= 0)
+        if (
+            slash <= 0
+        ) {
             return "/"
+        }
 
         return value.slice(
             0,
@@ -1219,15 +1235,25 @@ Singleton {
         )
     }
 
-    function _expandPath(path) {
+    function _expandPath(
+        path
+    ) {
         let value =
-            String(path || "").trim()
+            String(
+                path || ""
+            ).trim()
 
-        if (value.length === 0)
+        if (
+            value.length === 0
+        ) {
             return ""
+        }
 
-        if (value === "~")
+        if (
+            value === "~"
+        ) {
             return root.homeDir
+        }
 
         if (
             value.indexOf("~/") === 0
@@ -1261,9 +1287,6 @@ Singleton {
                 root.xdgConfigHome
             )
 
-        /*
-         * Non-absolute paths are resolved relative to HOME.
-         */
         if (
             value.charAt(0) !== "/"
         ) {
@@ -1280,7 +1303,9 @@ Singleton {
     // OBJECT HELPERS
     // ============================================================
 
-    function _isObject(value) {
+    function _isObject(
+        value
+    ) {
         return (
             value !== null &&
             typeof value === "object" &&
@@ -1288,13 +1313,17 @@ Singleton {
         )
     }
 
-    function _copyObject(value) {
+    function _copyObject(
+        value
+    ) {
         const result = {}
         const source =
             value || {}
 
         const keys =
-            Object.keys(source)
+            Object.keys(
+                source
+            )
 
         for (
             let i = 0;
@@ -1311,16 +1340,26 @@ Singleton {
         return result
     }
 
-    function _clone(value) {
-        if (value === undefined)
+    function _clone(
+        value
+    ) {
+        if (
+            value === undefined
+        ) {
             return undefined
+        }
 
-        if (value === null)
+        if (
+            value === null
+        ) {
             return null
+        }
 
         try {
             return JSON.parse(
-                JSON.stringify(value)
+                JSON.stringify(
+                    value
+                )
             )
         } catch (error) {
             root._warn(
@@ -1393,18 +1432,122 @@ Singleton {
         return target
     }
 
+    /*
+     * Semantic equality:
+     * object key insertion order does not matter,
+     * array order does matter.
+     */
     function _equivalent(
         left,
         right
     ) {
-        try {
-            return (
-                JSON.stringify(left) ===
-                JSON.stringify(right)
-            )
-        } catch (error) {
+        if (
+            left === right
+        ) {
+            return true
+        }
+
+        if (
+            left === null ||
+            right === null ||
+            left === undefined ||
+            right === undefined
+        ) {
             return false
         }
+
+        if (
+            typeof left !== "object" ||
+            typeof right !== "object"
+        ) {
+            return left === right
+        }
+
+        const leftArray =
+            Array.isArray(left)
+
+        const rightArray =
+            Array.isArray(right)
+
+        if (
+            leftArray !== rightArray
+        ) {
+            return false
+        }
+
+        if (
+            leftArray
+        ) {
+            if (
+                left.length !==
+                right.length
+            ) {
+                return false
+            }
+
+            for (
+                let i = 0;
+                i < left.length;
+                ++i
+            ) {
+                if (
+                    !root._equivalent(
+                        left[i],
+                        right[i]
+                    )
+                ) {
+                    return false
+                }
+            }
+
+            return true
+        }
+
+        const leftKeys =
+            Object.keys(
+                left
+            )
+
+        const rightKeys =
+            Object.keys(
+                right
+            )
+
+        if (
+            leftKeys.length !==
+            rightKeys.length
+        ) {
+            return false
+        }
+
+        for (
+            let i = 0;
+            i < leftKeys.length;
+            ++i
+        ) {
+            const key =
+                leftKeys[i]
+
+            if (
+                !Object.prototype.hasOwnProperty.call(
+                    right,
+                    key
+                )
+            ) {
+                return false
+            }
+
+            if (
+                !root._equivalent(
+                    left[key],
+                    right[key]
+                )
+            ) {
+                return false
+            }
+        }
+
+        return true
     }
 
     // ============================================================
@@ -1415,12 +1558,14 @@ Singleton {
         return {
             ready: false,
             writing: false,
-            dirty: false,
+            writePending: false,
             revision: 0
         }
     }
 
-    function _stateFor(fileKey) {
+    function _stateFor(
+        fileKey
+    ) {
         const key =
             root._resolveFileKey(
                 fileKey
@@ -1432,6 +1577,48 @@ Singleton {
         return (
             states[key] ||
             root._defaultFileState()
+        )
+    }
+
+    /*
+     * True when a local IO operation may still modify the file.
+     */
+    function _isWritePending(
+        fileKey
+    ) {
+        const key =
+            root._resolveFileKey(
+                fileKey
+            )
+
+        const state =
+            root._stateFor(
+                key
+            )
+
+        const controller =
+            root._controllerFor(
+                key
+            )
+
+        return !!(
+            state.writing ||
+            state.writePending ||
+            (
+                controller &&
+                (
+                    controller.writeText.length > 0 ||
+                    controller.queuedWriteText.length > 0
+                )
+            )
+        )
+    }
+
+    function _isWriteDirty(
+        fileKey
+    ) {
+        return root._isWritePending(
+            fileKey
         )
     }
 
@@ -1485,7 +1672,7 @@ Singleton {
     function _setDocument(
         fileKey,
         value,
-        dirty,
+        ignoredDirty,
         emitExternal
     ) {
         const key =
@@ -1494,18 +1681,21 @@ Singleton {
             )
 
         const normalized =
-            root._isObject(value)
-                ? root._clone(value)
+            root._isObject(
+                value
+            )
+                ? root._clone(
+                    value
+                )
                 : {}
+
+        const state =
+            root._stateFor(
+                key
+            )
 
         const oldDocument =
             root._documents[key]
-
-        const state =
-            root._stateFor(key)
-
-        const wasReady =
-            state.ready
 
         const changed =
             !root._equivalent(
@@ -1515,7 +1705,7 @@ Singleton {
 
         if (
             changed ||
-            !wasReady
+            !state.ready
         ) {
             const nextDocuments =
                 root._copyObject(
@@ -1533,22 +1723,8 @@ Singleton {
                 {
                     ready: true,
                     revision:
-                        state.revision + 1,
-                    dirty:
-                        dirty
-                            ? true
-                            : false
+                        state.revision + 1
                 }
-            )
-
-            root._debug(
-                "DATA",
-                "Document replaced:",
-                key,
-                "revision:",
-                state.revision + 1,
-                "changed:",
-                changed
             )
 
             root.documentUpdated(
@@ -1558,18 +1734,14 @@ Singleton {
             root._setFileState(
                 key,
                 {
-                    ready: true,
-                    dirty:
-                        dirty
-                            ? true
-                            : false
+                    ready: true
                 }
             )
         }
 
         if (
             emitExternal &&
-            wasReady &&
+            state.ready &&
             changed
         ) {
             root.externalReload(
@@ -1584,19 +1756,18 @@ Singleton {
     // PATH REGISTRY CRUD
     // ============================================================
 
-    /*
-     * CREATE
-     */
     function registerPath(
         fileKey,
-        path
+        fsPath
     ) {
         const key =
             root._normalizeFileKey(
                 fileKey
             )
 
-        if (key.length === 0) {
+        if (
+            key.length === 0
+        ) {
             root._warn(
                 "PATH",
                 "Refusing registerPath() with empty key."
@@ -1607,10 +1778,12 @@ Singleton {
 
         const expandedPath =
             root._expandPath(
-                path
+                fsPath
             )
 
-        if (expandedPath.length === 0) {
+        if (
+            expandedPath.length === 0
+        ) {
             root._warn(
                 "PATH",
                 "Refusing empty path for:",
@@ -1620,9 +1793,6 @@ Singleton {
             return false
         }
 
-        /*
-         * Same key + same path is idempotent.
-         */
         if (
             root._paths[key] !== undefined
         ) {
@@ -1654,10 +1824,6 @@ Singleton {
             return false
         }
 
-        /*
-         * Prevent two logical keys from pointing to the same file.
-         * That would create two watchers for one physical file.
-         */
         const existingKeys =
             Object.keys(
                 root._paths
@@ -1725,6 +1891,17 @@ Singleton {
         root._fileStates =
             nextStates
 
+        root._setHistory(
+            key,
+            [],
+            []
+        )
+
+        root._setBaseline(
+            key,
+            {}
+        )
+
         root._registryRevision += 1
 
         root._debug(
@@ -1738,9 +1915,6 @@ Singleton {
         return true
     }
 
-    /*
-     * CREATE MANY
-     */
     function registerPaths(
         pathTable
     ) {
@@ -1757,7 +1931,8 @@ Singleton {
             return false
         }
 
-        let success = true
+        let success =
+            true
 
         const keys =
             Object.keys(
@@ -1785,11 +1960,6 @@ Singleton {
         return success
     }
 
-    /*
-     * READ
-     *
-     * This is registry lookup and intentionally does NOT fall back.
-     */
     function hasPath(
         fileKey
     ) {
@@ -1798,17 +1968,17 @@ Singleton {
                 fileKey
             )
 
-        if (key.length === 0)
+        if (
+            key.length === 0
+        ) {
             return false
+        }
 
         return (
             root._paths[key] !== undefined
         )
     }
 
-    /*
-     * READ
-     */
     function pathFor(
         fileKey
     ) {
@@ -1829,19 +1999,18 @@ Singleton {
         )
     }
 
-    /*
-     * UPDATE
-     */
     function updatePath(
         fileKey,
-        path
+        fsPath
     ) {
         const key =
             root._normalizeFileKey(
                 fileKey
             )
 
-        if (key.length === 0) {
+        if (
+            key.length === 0
+        ) {
             root._warn(
                 "PATH",
                 "Refusing updatePath() with empty key."
@@ -1850,9 +2019,6 @@ Singleton {
             return false
         }
 
-        /*
-         * homeConfig is the permanent fallback.
-         */
         if (
             key === root.defaultFileKey
         ) {
@@ -1879,7 +2045,7 @@ Singleton {
 
         const expandedPath =
             root._expandPath(
-                path
+                fsPath
             )
 
         if (
@@ -1909,12 +2075,9 @@ Singleton {
             return true
         }
 
-        /*
-         * Never move a file while its current state is in flight.
-         */
         if (
-            root.writingFor(key) ||
-            root.dirtyFor(key)
+            root.isWritingFor(key) ||
+            root._isWriteDirty(key)
         ) {
             root._warn(
                 "PATH",
@@ -1925,9 +2088,6 @@ Singleton {
             return false
         }
 
-        /*
-         * Prevent duplicate physical paths.
-         */
         const existingKeys =
             Object.keys(
                 root._paths
@@ -1972,10 +2132,6 @@ Singleton {
         root._paths =
             nextPaths
 
-        /*
-         * The document belongs to the old file, so do not reuse it
-         * as the initial state of the new file.
-         */
         const nextDocuments =
             root._copyObject(
                 root._documents
@@ -1998,11 +2154,26 @@ Singleton {
         root._fileStates =
             nextStates
 
-        const controller =
-            root._controllerFor(key)
+        root._setHistory(
+            key,
+            [],
+            []
+        )
 
-        if (controller) {
-            controller.directoryReady =
+        root._setBaseline(
+            key,
+            {}
+        )
+
+        const controller =
+            root._controllerFor(
+                key
+            )
+
+        if (
+            controller
+        ) {
+            controller.isDirectoryReady =
                 false
 
             controller.writeText =
@@ -2029,9 +2200,6 @@ Singleton {
         return true
     }
 
-    /*
-     * DELETE
-     */
     function removePath(
         fileKey
     ) {
@@ -2040,7 +2208,9 @@ Singleton {
                 fileKey
             )
 
-        if (key.length === 0) {
+        if (
+            key.length === 0
+        ) {
             root._warn(
                 "PATH",
                 "Refusing removePath() with empty key."
@@ -2049,9 +2219,6 @@ Singleton {
             return false
         }
 
-        /*
-         * The default path is permanent.
-         */
         if (
             key === root.defaultFileKey
         ) {
@@ -2077,8 +2244,8 @@ Singleton {
         }
 
         if (
-            root.writingFor(key) ||
-            root.dirtyFor(key)
+            root.isWritingFor(key) ||
+            root._isWriteDirty(key)
         ) {
             root._warn(
                 "PATH",
@@ -2107,12 +2274,6 @@ Singleton {
                 nextPaths
             )
 
-        /*
-         * Remove the document/state immediately.
-         *
-         * Instantiator will destroy the corresponding controller
-         * when the model updates.
-         */
         const nextDocuments =
             root._copyObject(
                 root._documents
@@ -2132,6 +2293,26 @@ Singleton {
 
         root._fileStates =
             nextStates
+
+        const nextHistory =
+            root._copyObject(
+                root._history
+            )
+
+        delete nextHistory[key]
+
+        root._history =
+            nextHistory
+
+        const nextBaselines =
+            root._copyObject(
+                root._baselines
+            )
+
+        delete nextBaselines[key]
+
+        root._baselines =
+            nextBaselines
 
         root._registryRevision += 1
 
@@ -2167,13 +2348,20 @@ Singleton {
         if (
             documents[key] !== undefined
         ) {
-            return documents[key]
+            /*
+             * Return a snapshot so callers cannot mutate the store
+             * without going through set()/update()/remove()/
+             * undo()/redo()/revert() (history + revision + write).
+             */
+            return root._clone(
+                documents[key]
+            ) || {}
         }
 
         return {}
     }
 
-    function readyFor(
+    function isReadyFor(
         fileKey
     ) {
         const states =
@@ -2197,7 +2385,7 @@ Singleton {
         )
     }
 
-    function writingFor(
+    function isWritingFor(
         fileKey
     ) {
         const states =
@@ -2221,46 +2409,34 @@ Singleton {
         )
     }
 
-    function dirtyFor(
+    function isDirtyFor(
         fileKey
     ) {
-        const states =
-            root._fileStates
-
-        const registryRevision =
-            root._registryRevision
-
         const key =
             root._resolveFileKey(
                 fileKey
             )
 
-        const state =
-            states[key]
-
-        return (
-            state
-                ? !!state.dirty
-                : false
+        return !root._equivalent(
+            root.documentFor(
+                key
+            ),
+            root._baselineFor(
+                key
+            )
         )
     }
 
     function revisionFor(
         fileKey
     ) {
-        const states =
-            root._fileStates
-
-        const registryRevision =
-            root._registryRevision
-
         const key =
             root._resolveFileKey(
                 fileKey
             )
 
         const state =
-            states[key]
+            root._fileStates[key]
 
         return (
             state
@@ -2273,6 +2449,37 @@ Singleton {
     // LOAD HANDLING
     // ============================================================
 
+    function _parseLoadedDocument(
+        fileView
+    ) {
+        const text =
+            fileView.text()
+
+        if (
+            !text ||
+            text.trim().length === 0
+        ) {
+            return {}
+        }
+
+        const parsed =
+            JSON.parse(
+                text
+            )
+
+        if (
+            !root._isObject(
+                parsed
+            )
+        ) {
+            throw new Error(
+                "config root must be a JSON object"
+            )
+        }
+
+        return parsed
+    }
+
     function _handleLoaded(
         controller,
         fileView
@@ -2281,43 +2488,27 @@ Singleton {
             controller.fileKey
 
         const state =
-            root._stateFor(key)
-
-        root._debug(
-            "LOAD",
-            "Processing loaded file:",
-            key,
-            "->",
-            controller.filePath
-        )
-
-        /*
-         * A local mutation occurred before the initial file load
-         * completed.
-         *
-         * Preserve local state and save it instead of allowing the
-         * disk copy to overwrite it.
-         */
-        if (
-            state.dirty
-        ) {
-            root._debug(
-                "LOAD",
-                "Skipping disk document because local state is dirty:",
+            root._stateFor(
                 key
             )
 
-            root._setFileState(
-                key,
-                {
-                    ready: true
-                }
+        const isExplicit =
+            controller.explicitReloadPending
+
+        controller.explicitReloadPending =
+            false
+
+        if (
+            !isExplicit &&
+            root._isWritePending(
+                key
             )
-
-            controller.directoryReady =
-                true
-
-            controller.queueSave()
+        ) {
+            root._debug(
+                "LOAD",
+                "Ignoring load while local write pipeline is active:",
+                key
+            )
 
             return
         }
@@ -2325,28 +2516,10 @@ Singleton {
         let parsed
 
         try {
-            const text =
-                fileView.text()
-
-            if (
-                !text ||
-                text.trim().length === 0
-            ) {
-                parsed = {}
-            } else {
-                parsed =
-                    JSON.parse(
-                        text
-                    )
-            }
-
-            if (
-                !root._isObject(parsed)
-            ) {
-                throw new Error(
-                    "config root must be a JSON object"
+            parsed =
+                root._parseLoadedDocument(
+                    fileView
                 )
-            }
         } catch (error) {
             root._warn(
                 "LOAD",
@@ -2357,9 +2530,6 @@ Singleton {
                 error
             )
 
-            /*
-             * Preserve an existing valid in-memory document.
-             */
             if (
                 !state.ready
             ) {
@@ -2369,30 +2539,116 @@ Singleton {
                     false,
                     false
                 )
+
+                root._setBaseline(
+                    key,
+                    {}
+                )
+
+                root._clearHistory(
+                    key
+                )
             }
 
             return
         }
 
-        controller.directoryReady =
+        controller.isDirectoryReady =
             true
 
-        const changed =
+        const oldDocument =
+            root.documentFor(
+                key
+            )
+
+        /*
+         * First successful load:
+         * disk becomes clean baseline.
+         */
+        if (
+            !state.ready
+        ) {
             root._setDocument(
                 key,
                 parsed,
                 false,
-                true
+                false
             )
 
-        root._debug(
-            "LOAD",
-            "Document refresh complete:",
+            root._setBaseline(
+                key,
+                parsed
+            )
+
+            root._clearHistory(
+                key
+            )
+
+            return
+        }
+
+        /*
+         * Explicit reload:
+         * discard local state and trust disk.
+         */
+        if (
+            isExplicit
+        ) {
+            root._setDocument(
+                key,
+                parsed,
+                false,
+                false
+            )
+
+            root._setBaseline(
+                key,
+                parsed
+            )
+
+            root._clearHistory(
+                key
+            )
+
+            return
+        }
+
+        /*
+         * Watcher reload.
+         *
+         * If the file is byte/semantically identical,
+         * do nothing.
+         *
+         * A real external change becomes a history entry.
+         * The baseline stays where it was.
+         */
+        if (
+            root._equivalent(
+                oldDocument,
+                parsed
+            )
+        ) {
+            return
+        }
+
+        const entry =
+            root._makeHistoryEntry(
+                oldDocument,
+                parsed,
+                "externalReload",
+                ""
+            )
+
+        root._pushHistoryEntry(
             key,
-            "changed:",
-            changed,
-            "revision:",
-            root.revisionFor(key)
+            entry
+        )
+
+        root._setDocument(
+            key,
+            parsed,
+            false,
+            true
         )
     }
 
@@ -2404,7 +2660,15 @@ Singleton {
             controller.fileKey
 
         const state =
-            root._stateFor(key)
+            root._stateFor(
+                key
+            )
+
+        const isExplicit =
+            controller.explicitReloadPending
+
+        controller.explicitReloadPending =
+            false
 
         if (
             error ===
@@ -2418,13 +2682,10 @@ Singleton {
                 controller.filePath
             )
 
-            /*
-             * Initial missing file.
-             */
             if (
                 !state.ready
             ) {
-                controller.directoryReady =
+                controller.isDirectoryReady =
                     false
 
                 root._setDocument(
@@ -2434,49 +2695,88 @@ Singleton {
                     false
                 )
 
-                /*
-                 * Preserve old behavior for homeConfig:
-                 * automatically create the default file.
-                 */
-                if (
-                    key ===
-                    root.defaultFileKey
-                ) {
-                    root._debug(
-                        "WRITE",
-                        "Default config missing; creating:",
-                        controller.filePath
-                    )
+                root._setBaseline(
+                    key,
+                    {}
+                )
 
+                root._clearHistory(
+                    key
+                )
+
+                if (
+                    key === root.defaultFileKey
+                ) {
                     controller.queueSave()
                 }
 
                 return
             }
 
-            /*
-             * Existing file disappeared externally.
-             *
-             * Preserve local state if dirty.
-             */
             if (
-                !state.dirty
+                isExplicit
             ) {
-                root._debug(
-                    "LOAD",
-                    "Loaded file disappeared externally:",
-                    key,
-                    "->",
-                    controller.filePath
-                )
+                controller.isDirectoryReady =
+                    false
 
                 root._setDocument(
                     key,
                     {},
                     false,
-                    true
+                    false
                 )
+
+                root._setBaseline(
+                    key,
+                    {}
+                )
+
+                root._clearHistory(
+                    key
+                )
+
+                return
             }
+
+            /*
+             * Existing file disappeared externally.
+             */
+            const oldDocument =
+                root.documentFor(
+                    key
+                )
+
+            if (
+                root._equivalent(
+                    oldDocument,
+                    {}
+                )
+            ) {
+                return
+            }
+
+            const entry =
+                root._makeHistoryEntry(
+                    oldDocument,
+                    {},
+                    "externalReload",
+                    ""
+                )
+
+            root._pushHistoryEntry(
+                key,
+                entry
+            )
+
+            controller.isDirectoryReady =
+                false
+
+            root._setDocument(
+                key,
+                {},
+                false,
+                true
+            )
 
             return
         }
@@ -2495,10 +2795,6 @@ Singleton {
             reason
         )
 
-        /*
-         * Never destroy a valid in-memory document because of a
-         * temporary IO error.
-         */
         if (
             !state.ready
         ) {
@@ -2508,6 +2804,15 @@ Singleton {
                 false,
                 false
             )
+
+            root._setBaseline(
+                key,
+                {}
+            )
+
+            root._clearHistory(
+                key
+            )
         }
     }
 
@@ -2516,44 +2821,33 @@ Singleton {
     // ============================================================
 
     function get(
-        path,
+        dataPath,
         fallbackValue,
         fileKey
     ) {
-        /*
-         * Explicit dependency on _documents and _registryRevision
-         * keeps this function reactive when either the document or
-         * file registration changes.
-         */
-        const documents =
-            root._documents
-
-        const registryRevision =
-            root._registryRevision
-
         const key =
             root._resolveFileKey(
                 fileKey
             )
 
         if (
-            !path ||
-            String(path).length === 0
+            !dataPath ||
+            String(
+                dataPath
+            ).length === 0
         ) {
             return fallbackValue
         }
 
         let current =
-            documents[key]
-
-        if (
-            current === undefined
-        ) {
-            return fallbackValue
-        }
+            root.documentFor(
+                key
+            )
 
         const parts =
-            String(path).split(".")
+            String(
+                dataPath
+            ).split(".")
 
         for (
             let i = 0;
@@ -2580,14 +2874,14 @@ Singleton {
     }
 
     function has(
-        path,
+        dataPath,
         fileKey
     ) {
         const missing = {}
 
         return (
             root.get(
-                path,
+                dataPath,
                 missing,
                 fileKey
             ) !== missing
@@ -2595,66 +2889,87 @@ Singleton {
     }
 
     // ============================================================
-    // WRITE API
+    // PATH VALUE HELPERS
     // ============================================================
 
-    function set(
-        path,
+    function _valueAt(
         value,
-        fileKey
+        dataPath
     ) {
-        const key =
-            root._resolveFileKey(
-                fileKey
-            )
-
         if (
-            !path ||
-            String(path).length === 0
+            !dataPath ||
+            String(
+                dataPath
+            ).length === 0
         ) {
-            root._warn(
-                "WRITE",
-                "Refusing empty set() path."
-            )
-
-            return false
+            return {
+                exists: true,
+                value: value
+            }
         }
-
-        /*
-         * JSON has no undefined value.
-         *
-         * Accept null, but reject undefined so in-memory state never
-         * differs from the serialized document.
-         */
-        if (
-            value === undefined
-        ) {
-            root._warn(
-                "WRITE",
-                "Refusing set() with undefined value:",
-                key,
-                "->",
-                path
-            )
-
-            return false
-        }
-
-        const currentDocument =
-            root.documentFor(
-                key
-            )
-
-        const nextDocument =
-            root._clone(
-                currentDocument
-            )
 
         let current =
-            nextDocument
+            value
 
         const parts =
-            String(path).split(".")
+            String(
+                dataPath
+            ).split(".")
+
+        for (
+            let i = 0;
+            i < parts.length;
+            ++i
+        ) {
+            const part =
+                parts[i]
+
+            if (
+                current === null ||
+                current === undefined ||
+                typeof current !== "object" ||
+                !Object.prototype.hasOwnProperty.call(
+                    current,
+                    part
+                )
+            ) {
+                return {
+                    exists: false,
+                    value: undefined
+                }
+            }
+
+            current =
+                current[part]
+        }
+
+        return {
+            exists: true,
+            value: current
+        }
+    }
+
+    function _setPathValue(
+        document,
+        dataPath,
+        value
+    ) {
+        if (
+            !dataPath ||
+            String(
+                dataPath
+            ).length === 0
+        ) {
+            return false
+        }
+
+        const parts =
+            String(
+                dataPath
+            ).split(".")
+
+        let current =
+            document
 
         for (
             let i = 0;
@@ -2666,10 +2981,8 @@ Singleton {
 
             if (
                 current[part] === null ||
-                typeof current[part] !== "object" ||
-                Array.isArray(
-                    current[part]
-                )
+                current[part] === undefined ||
+                typeof current[part] !== "object"
             ) {
                 current[part] = {}
             }
@@ -2687,193 +3000,29 @@ Singleton {
                 value
             )
 
-        /*
-         * Avoid needless revision increments and file writes.
-         */
-        if (
-            root._equivalent(
-                currentDocument,
-                nextDocument
-            )
-        ) {
-            root._debug(
-                "WRITE",
-                "set() is a no-op:",
-                key,
-                "->",
-                path
-            )
-
-            return true
-        }
-
-        const nextDocuments =
-            root._copyObject(
-                root._documents
-            )
-
-        nextDocuments[key] =
-            nextDocument
-
-        root._documents =
-            nextDocuments
-
-        const state =
-            root._stateFor(key)
-
-        root._setFileState(
-            key,
-            {
-                dirty: true,
-                revision:
-                    state.revision + 1
-            }
-        )
-
-        root._debug(
-            "WRITE",
-            "set():",
-            key,
-            "->",
-            path,
-            "revision:",
-            state.revision + 1
-        )
-
-        root.documentUpdated(
-            key
-        )
-
-        const controller =
-            root._controllerFor(
-                key
-            )
-
-        /*
-         * The controller may not exist yet while an Instantiator
-         * object is still being created.
-         *
-         * The dirty state remains in the store. Once the controller
-         * appears, onObjectAdded() will queue the save.
-         */
-        if (!controller) {
-            root._debug(
-                "WRITE",
-                "Controller not ready; save deferred:",
-                key
-            )
-
-            return true
-        }
-
-        return controller.queueSave()
+        return true
     }
 
-    function update(
-        section,
-        patch,
-        fileKey
+    function _removePathValue(
+        document,
+        dataPath
     ) {
         if (
-            !section ||
-            String(section).length === 0
+            !dataPath ||
+            String(
+                dataPath
+            ).length === 0
         ) {
-            root._warn(
-                "WRITE",
-                "Refusing empty update() section."
-            )
-
             return false
         }
-
-        if (
-            !root._isObject(
-                patch
-            )
-        ) {
-            root._warn(
-                "WRITE",
-                "update() requires an object."
-            )
-
-            return false
-        }
-
-        const key =
-            root._resolveFileKey(
-                fileKey
-            )
-
-        root._debug(
-            "WRITE",
-            "update():",
-            key,
-            "->",
-            section
-        )
-
-        const current =
-            root.get(
-                section,
-                {},
-                key
-            )
-
-        const merged =
-            root._deepMerge(
-                root._isObject(
-                    current
-                )
-                    ? root._clone(
-                        current
-                    )
-                    : {},
-                patch
-            )
-
-        return root.set(
-            section,
-            merged,
-            key
-        )
-    }
-
-    function remove(
-        path,
-        fileKey
-    ) {
-        const key =
-            root._resolveFileKey(
-                fileKey
-            )
-
-        if (
-            !path ||
-            String(path).length === 0
-        ) {
-            root._warn(
-                "WRITE",
-                "Refusing empty remove() path."
-            )
-
-            return false
-        }
-
-        const currentDocument =
-            root.documentFor(
-                key
-            )
-
-        const nextDocument =
-            root._clone(
-                currentDocument
-            )
-
-        let current =
-            nextDocument
 
         const parts =
-            String(path).split(".")
+            String(
+                dataPath
+            ).split(".")
+
+        let current =
+            document
 
         for (
             let i = 0;
@@ -2885,8 +3034,12 @@ Singleton {
 
             if (
                 current === null ||
+                current === undefined ||
                 typeof current !== "object" ||
-                !(part in current)
+                !Object.prototype.hasOwnProperty.call(
+                    current,
+                    part
+                )
             ) {
                 return false
             }
@@ -2902,13 +3055,749 @@ Singleton {
 
         if (
             current === null ||
+            current === undefined ||
             typeof current !== "object" ||
-            !(finalKey in current)
+            !Object.prototype.hasOwnProperty.call(
+                current,
+                finalKey
+            )
         ) {
             return false
         }
 
-        delete current[finalKey]
+        delete current[
+            finalKey
+        ]
+
+        return true
+    }
+
+    // ============================================================
+    // HISTORY DIFFS
+    // ============================================================
+
+    function _pushDiffChange(
+        changes,
+        path,
+        beforeState,
+        afterState
+    ) {
+        changes.push({
+            path: path,
+
+            beforeExists:
+                !!beforeState.exists,
+
+            beforeValue:
+                beforeState.exists
+                    ? root._clone(
+                        beforeState.value
+                    )
+                    : undefined,
+
+            afterExists:
+                !!afterState.exists,
+
+            afterValue:
+                afterState.exists
+                    ? root._clone(
+                        afterState.value
+                    )
+                    : undefined
+        })
+    }
+
+    function _collectDiff(
+        before,
+        after,
+        path,
+        changes
+    ) {
+        if (
+            root._equivalent(
+                before,
+                after
+            )
+        ) {
+            return
+        }
+
+        const beforeObject =
+            root._isObject(
+                before
+            )
+
+        const afterObject =
+            root._isObject(
+                after
+            )
+
+        if (
+            beforeObject &&
+            afterObject
+        ) {
+            const keys = {}
+
+            const beforeKeys =
+                Object.keys(
+                    before
+                )
+
+            const afterKeys =
+                Object.keys(
+                    after
+                )
+
+            for (
+                let i = 0;
+                i < beforeKeys.length;
+                ++i
+            ) {
+                keys[
+                    beforeKeys[i]
+                ] = true
+            }
+
+            for (
+                let i = 0;
+                i < afterKeys.length;
+                ++i
+            ) {
+                keys[
+                    afterKeys[i]
+                ] = true
+            }
+
+            const allKeys =
+                Object.keys(
+                    keys
+                )
+
+            for (
+                let i = 0;
+                i < allKeys.length;
+                ++i
+            ) {
+                const key =
+                    allKeys[i]
+
+                const childPath =
+                    path.length > 0
+                        ? path + "." + key
+                        : key
+
+                const beforeState =
+                    Object.prototype.hasOwnProperty.call(
+                        before,
+                        key
+                    )
+                        ? {
+                            exists: true,
+                            value: before[key]
+                        }
+                        : {
+                            exists: false,
+                            value: undefined
+                        }
+
+                const afterState =
+                    Object.prototype.hasOwnProperty.call(
+                        after,
+                        key
+                    )
+                        ? {
+                            exists: true,
+                            value: after[key]
+                        }
+                        : {
+                            exists: false,
+                            value: undefined
+                        }
+
+                if (
+                    beforeState.exists &&
+                    afterState.exists &&
+                    root._isObject(
+                        beforeState.value
+                    ) &&
+                    root._isObject(
+                        afterState.value
+                    )
+                ) {
+                    root._collectDiff(
+                        beforeState.value,
+                        afterState.value,
+                        childPath,
+                        changes
+                    )
+                } else if (
+                    !beforeState.exists ||
+                    !afterState.exists ||
+                    !root._equivalent(
+                        beforeState.value,
+                        afterState.value
+                    )
+                ) {
+                    root._pushDiffChange(
+                        changes,
+                        childPath,
+                        beforeState,
+                        afterState
+                    )
+                }
+            }
+
+            return
+        }
+
+        root._pushDiffChange(
+            changes,
+            path || "$",
+            {
+                exists: true,
+                value: before
+            },
+            {
+                exists: true,
+                value: after
+            }
+        )
+    }
+
+    function _makeHistoryEntry(
+        beforeDocument,
+        afterDocument,
+        op,
+        dataPath
+    ) {
+        let changes = []
+
+        if (
+            dataPath &&
+            String(
+                dataPath
+            ).length > 0
+        ) {
+            root._pushDiffChange(
+                changes,
+                String(
+                    dataPath
+                ),
+                root._valueAt(
+                    beforeDocument,
+                    dataPath
+                ),
+                root._valueAt(
+                    afterDocument,
+                    dataPath
+                )
+            )
+        } else {
+            root._collectDiff(
+                beforeDocument,
+                afterDocument,
+                "",
+                changes
+            )
+        }
+
+        return {
+            op:
+                String(
+                    op || ""
+                ),
+
+            dataPath:
+                String(
+                    dataPath || ""
+                ),
+
+            changeCount:
+                changes.length,
+
+            changes:
+                changes
+        }
+    }
+
+    function _describeEntry(
+        entry
+    ) {
+        if (
+            !entry
+        ) {
+            return {
+                op: "",
+                dataPath: "",
+                changeCount: 0,
+                changes: []
+            }
+        }
+
+        const changes = []
+        const source =
+            entry.changes || []
+
+        for (
+            let i = 0;
+            i < source.length;
+            ++i
+        ) {
+            const change =
+                source[i]
+
+            changes.push({
+                path:
+                    String(
+                        change.path || ""
+                    ),
+
+                beforeExists:
+                    !!change.beforeExists,
+
+                beforeValue:
+                    change.beforeExists
+                        ? root._clone(
+                            change.beforeValue
+                        )
+                        : undefined,
+
+                afterExists:
+                    !!change.afterExists,
+
+                afterValue:
+                    change.afterExists
+                        ? root._clone(
+                            change.afterValue
+                        )
+                        : undefined
+            })
+        }
+
+        return {
+            op:
+                String(
+                    entry.op || ""
+                ),
+
+            dataPath:
+                String(
+                    entry.dataPath || ""
+                ),
+
+            changeCount:
+                changes.length,
+
+            changes:
+                changes
+        }
+    }
+
+    function _historyFor(
+        fileKey
+    ) {
+        const key =
+            root._resolveFileKey(
+                fileKey
+            )
+
+        const history =
+            root._history[key]
+
+        return {
+            past:
+                history &&
+                history.past
+                    ? history.past
+                    : [],
+
+            future:
+                history &&
+                history.future
+                    ? history.future
+                    : []
+        }
+    }
+
+    function _setHistory(
+        fileKey,
+        past,
+        future
+    ) {
+        const key =
+            root._resolveFileKey(
+                fileKey
+            )
+
+        const nextHistory =
+            root._copyObject(
+                root._history
+            )
+
+        nextHistory[key] = {
+            past:
+                (
+                    past ||
+                    []
+                ).slice(),
+
+            future:
+                (
+                    future ||
+                    []
+                ).slice()
+        }
+
+        root._history =
+            nextHistory
+    }
+
+    function _trimHistory(
+        past,
+        future
+    ) {
+        let nextPast =
+            (
+                past ||
+                []
+            ).slice()
+
+        let nextFuture =
+            (
+                future ||
+                []
+            ).slice()
+
+        const limit =
+            Math.max(
+                1,
+                root.historyLimit
+            )
+
+        while (
+            nextPast.length +
+            nextFuture.length >
+            limit
+        ) {
+            /*
+             * Preserve redo: discard the oldest undo first.
+             * Only when past is empty may future be trimmed.
+             */
+            if (
+                nextPast.length > 0
+            ) {
+                nextPast.shift()
+            } else {
+                nextFuture.shift()
+            }
+        }
+
+        return {
+            past:
+                nextPast,
+
+            future:
+                nextFuture
+        }
+    }
+
+    function _pushHistoryEntry(
+        fileKey,
+        entry
+    ) {
+        const slots =
+            root._historyFor(
+                fileKey
+            )
+
+        const past =
+            slots.past.slice()
+
+        past.push(
+            entry
+        )
+
+        /*
+         * New mutation invalidates redo.
+         */
+        const trimmed =
+            root._trimHistory(
+                past,
+                []
+            )
+
+        root._setHistory(
+            fileKey,
+            trimmed.past,
+            trimmed.future
+        )
+    }
+
+    function _clearHistory(
+        fileKey
+    ) {
+        root._setHistory(
+            fileKey,
+            [],
+            []
+        )
+    }
+
+    function _baselineFor(
+        fileKey
+    ) {
+        const key =
+            root._resolveFileKey(
+                fileKey
+            )
+
+        const baselines =
+            root._baselines
+
+        if (
+            baselines[key] === undefined
+        ) {
+            return {}
+        }
+
+        return root._clone(
+            baselines[key]
+        )
+    }
+
+    function _setBaseline(
+        fileKey,
+        document
+    ) {
+        const key =
+            root._resolveFileKey(
+                fileKey
+            )
+
+        const nextBaselines =
+            root._copyObject(
+                root._baselines
+            )
+
+        nextBaselines[key] =
+            root._clone(
+                document
+            ) || {}
+
+        root._baselines =
+            nextBaselines
+    }
+
+    function historyAt(
+        fileKey
+    ) {
+        const key =
+            root._resolveFileKey(
+                fileKey
+            )
+
+        const slots =
+            root._historyFor(
+                key
+            )
+
+        const past = []
+        const future = []
+
+        for (
+            let i = 0;
+            i < slots.past.length;
+            ++i
+        ) {
+            past.push(
+                root._describeEntry(
+                    slots.past[i]
+                )
+            )
+        }
+
+        /*
+         * The next redo is the first public future item.
+         */
+        for (
+            let i =
+                slots.future.length - 1;
+            i >= 0;
+            --i
+        ) {
+            future.push(
+                root._describeEntry(
+                    slots.future[i]
+                )
+            )
+        }
+
+        return {
+            past:
+                past,
+
+            future:
+                future,
+
+            canUndo:
+                slots.past.length > 0,
+
+            canRedo:
+                slots.future.length > 0,
+
+            count:
+                slots.past.length +
+                slots.future.length,
+
+            limit:
+                root.historyLimit,
+
+            isDirty:
+                root.isDirtyFor(
+                    key
+                )
+        }
+    }
+
+    function historyFor(
+        fileKey
+    ) {
+        return root.historyAt(
+            fileKey
+        )
+    }
+
+    function _applyHistoryEntry(
+        document,
+        entry,
+        useBefore
+    ) {
+        const result =
+            root._clone(
+                document
+            )
+
+        const changes =
+            entry &&
+            entry.changes
+                ? entry.changes
+                : []
+
+        for (
+            let i = 0;
+            i < changes.length;
+            ++i
+        ) {
+            const change =
+                changes[i]
+
+            const exists =
+                useBefore
+                    ? !!change.beforeExists
+                    : !!change.afterExists
+
+            const value =
+                useBefore
+                    ? change.beforeValue
+                    : change.afterValue
+
+            if (
+                change.path === "$" &&
+                !exists
+            ) {
+                return {}
+            }
+
+            if (
+                change.path === "$" &&
+                exists
+            ) {
+                return (
+                    root._clone(
+                        value
+                    ) || {}
+                )
+            }
+
+            if (
+                exists
+            ) {
+                root._setPathValue(
+                    result,
+                    change.path,
+                    value
+                )
+            } else {
+                root._removePathValue(
+                    result,
+                    change.path
+                )
+            }
+        }
+
+        return result
+    }
+
+    // ============================================================
+    // DOCUMENT COMMIT / MUTATION
+    // ============================================================
+
+    function _commitDocument(
+        key,
+        nextDocument,
+        label,
+        dataPath
+    ) {
+        const current =
+            root.documentFor(
+                key
+            )
+
+        const normalized =
+            root._isObject(
+                nextDocument
+            )
+                ? root._clone(
+                    nextDocument
+                )
+                : {}
+
+        if (
+            root._equivalent(
+                current,
+                normalized
+            )
+        ) {
+            return true
+        }
+
+        const controller =
+            root._controllerFor(
+                key
+            )
+
+        /*
+         * Any mutation after save() cancels the pending
+         * clean-baseline commit.
+         */
+        if (
+            controller
+        ) {
+            controller.completeSaveWhenIdle =
+                false
+        }
+
+        const state =
+            root._stateFor(
+                key
+            )
+
+        root._setFileState(
+            key,
+            {
+                writePending: true
+            }
+        )
 
         const nextDocuments =
             root._copyObject(
@@ -2916,18 +3805,15 @@ Singleton {
             )
 
         nextDocuments[key] =
-            nextDocument
+            normalized
 
         root._documents =
             nextDocuments
 
-        const state =
-            root._stateFor(key)
-
         root._setFileState(
             key,
             {
-                dirty: true,
+                ready: true,
                 revision:
                     state.revision + 1
             }
@@ -2935,10 +3821,10 @@ Singleton {
 
         root._debug(
             "WRITE",
-            "remove():",
+            label,
             key,
             "->",
-            path,
+            dataPath,
             "revision:",
             state.revision + 1
         )
@@ -2947,22 +3833,682 @@ Singleton {
             key
         )
 
+        if (
+            !controller
+        ) {
+            return true
+        }
+
+        const queued =
+            controller.queueSave()
+
+        if (
+            !queued
+        ) {
+            root._setFileState(
+                key,
+                {
+                    writePending: false
+                }
+            )
+        }
+
+        return queued
+    }
+
+    function set(
+        dataPath,
+        value,
+        fileKey
+    ) {
+        const key =
+            root._resolveFileKey(
+                fileKey
+            )
+
+        if (
+            !dataPath ||
+            String(
+                dataPath
+            ).length === 0
+        ) {
+            root._warn(
+                "WRITE",
+                "Refusing empty set() path."
+            )
+
+            return false
+        }
+
+        if (
+            value === undefined
+        ) {
+            root._warn(
+                "WRITE",
+                "Refusing set() with undefined value:",
+                key,
+                "->",
+                dataPath
+            )
+
+            return false
+        }
+
+        const before =
+            root.documentFor(
+                key
+            )
+
+        const after =
+            root._clone(
+                before
+            )
+
+        if (
+            !root._setPathValue(
+                after,
+                dataPath,
+                value
+            )
+        ) {
+            return false
+        }
+
+        if (
+            root._equivalent(
+                before,
+                after
+            )
+        ) {
+            return true
+        }
+
+        root._pushHistoryEntry(
+            key,
+            root._makeHistoryEntry(
+                before,
+                after,
+                "set",
+                dataPath
+            )
+        )
+
+        return root._commitDocument(
+            key,
+            after,
+            "set()",
+            dataPath
+        )
+    }
+
+    function update(
+        dataPath,
+        value,
+        fileKey
+    ) {
+        const key =
+            root._resolveFileKey(
+                fileKey
+            )
+
+        if (
+            !dataPath ||
+            String(
+                dataPath
+            ).length === 0
+        ) {
+            root._warn(
+                "WRITE",
+                "Refusing empty update() path."
+            )
+
+            return false
+        }
+
+        if (
+            !root._isObject(
+                value
+            )
+        ) {
+            root._warn(
+                "WRITE",
+                "update() requires an object."
+            )
+
+            return false
+        }
+
+        const before =
+            root.documentFor(
+                key
+            )
+
+        const currentValue =
+            root._valueAt(
+                before,
+                dataPath
+            )
+
+        const merged =
+            root._deepMerge(
+                currentValue.exists &&
+                root._isObject(
+                    currentValue.value
+                )
+                    ? root._clone(
+                        currentValue.value
+                    )
+                    : {},
+                value
+            )
+
+        const after =
+            root._clone(
+                before
+            )
+
+        if (
+            !root._setPathValue(
+                after,
+                dataPath,
+                merged
+            )
+        ) {
+            return false
+        }
+
+        if (
+            root._equivalent(
+                before,
+                after
+            )
+        ) {
+            return true
+        }
+
+        root._pushHistoryEntry(
+            key,
+            root._makeHistoryEntry(
+                before,
+                after,
+                "update",
+                dataPath
+            )
+        )
+
+        return root._commitDocument(
+            key,
+            after,
+            "update()",
+            dataPath
+        )
+    }
+
+    function remove(
+        dataPath,
+        fileKey
+    ) {
+        const key =
+            root._resolveFileKey(
+                fileKey
+            )
+
+        if (
+            !dataPath ||
+            String(
+                dataPath
+            ).length === 0
+        ) {
+            root._warn(
+                "WRITE",
+                "Refusing empty remove() path."
+            )
+
+            return false
+        }
+
+        const before =
+            root.documentFor(
+                key
+            )
+
+        const after =
+            root._clone(
+                before
+            )
+
+        if (
+            !root._removePathValue(
+                after,
+                dataPath
+            )
+        ) {
+            return false
+        }
+
+        root._pushHistoryEntry(
+            key,
+            root._makeHistoryEntry(
+                before,
+                after,
+                "remove",
+                dataPath
+            )
+        )
+
+        return root._commitDocument(
+            key,
+            after,
+            "remove()",
+            dataPath
+        )
+    }
+
+    // ============================================================
+    // UNDO / REDO / REVERT
+    // ============================================================
+
+    function undo(
+        fileKey
+    ) {
+        const key =
+            root._resolveFileKey(
+                fileKey
+            )
+
+        const state =
+            root._stateFor(
+                key
+            )
+
+        if (
+            !state.ready
+        ) {
+            root._warn(
+                "WRITE",
+                "undo() requested before configuration is ready:",
+                key
+            )
+
+            return false
+        }
+
+        const slots =
+            root._historyFor(
+                key
+            )
+
+        if (
+            slots.past.length === 0
+        ) {
+            return false
+        }
+
+        const current =
+            root.documentFor(
+                key
+            )
+
+        /*
+         * Compute first so a no-op undo still advances the
+         * stack without touching disk/revision.
+         */
+        const entry =
+            slots.past[
+                slots.past.length - 1
+            ]
+
+        const nextDocument =
+            root._applyHistoryEntry(
+                current,
+                entry,
+                true
+            )
+
+        const past =
+            slots.past.slice()
+
+        const future =
+            slots.future.slice()
+
+        /*
+         * This exact entry is moved to future.
+         */
+        past.pop()
+
+        future.push(
+            entry
+        )
+
+        const trimmed =
+            root._trimHistory(
+                past,
+                future
+            )
+
+        root._setHistory(
+            key,
+            trimmed.past,
+            trimmed.future
+        )
+
         const controller =
             root._controllerFor(
                 key
             )
 
-        if (!controller) {
-            root._debug(
-                "WRITE",
-                "Controller not ready; removal save deferred:",
+        if (
+            controller
+        ) {
+            controller.completeSaveWhenIdle =
+                false
+        }
+
+        /*
+         * No-op undo: history already advanced, disk already
+         * matches, no revision/signal/write needed.
+         */
+        if (
+            root._equivalent(
+                current,
+                nextDocument
+            )
+        ) {
+            return true
+        }
+
+        return root._commitDocument(
+            key,
+            nextDocument,
+            "undo()",
+            entry.dataPath
+        )
+    }
+
+    function redo(
+        fileKey
+    ) {
+        const key =
+            root._resolveFileKey(
+                fileKey
+            )
+
+        const state =
+            root._stateFor(
                 key
             )
+
+        if (
+            !state.ready
+        ) {
+            root._warn(
+                "WRITE",
+                "redo() requested before configuration is ready:",
+                key
+            )
+
+            return false
+        }
+
+        const slots =
+            root._historyFor(
+                key
+            )
+
+        if (
+            slots.future.length === 0
+        ) {
+            return false
+        }
+
+        const current =
+            root.documentFor(
+                key
+            )
+
+        /*
+         * Compute first so a no-op redo still advances the
+         * stack without touching disk/revision.
+         */
+        const entry =
+            slots.future[
+                slots.future.length - 1
+            ]
+
+        const nextDocument =
+            root._applyHistoryEntry(
+                current,
+                entry,
+                false
+            )
+
+        const past =
+            slots.past.slice()
+
+        const future =
+            slots.future.slice()
+
+        /*
+         * This exact entry is moved back to past.
+         */
+        future.pop()
+
+        past.push(
+            entry
+        )
+
+        const trimmed =
+            root._trimHistory(
+                past,
+                future
+            )
+
+        root._setHistory(
+            key,
+            trimmed.past,
+            trimmed.future
+        )
+
+        const controller =
+            root._controllerFor(
+                key
+            )
+
+        if (
+            controller
+        ) {
+            controller.completeSaveWhenIdle =
+                false
+        }
+
+        /*
+         * No-op redo: history already advanced, disk already
+         * matches, no revision/signal/write needed.
+         */
+        if (
+            root._equivalent(
+                current,
+                nextDocument
+            )
+        ) {
+            return true
+        }
+
+        return root._commitDocument(
+            key,
+            nextDocument,
+            "redo()",
+            entry.dataPath
+        )
+    }
+
+    function revert(
+        fileKey
+    ) {
+        const key =
+            root._resolveFileKey(
+                fileKey
+            )
+
+        const state =
+            root._stateFor(
+                key
+            )
+
+        if (
+            !state.ready
+        ) {
+            root._warn(
+                "WRITE",
+                "revert() requested before configuration is ready:",
+                key
+            )
+
+            return false
+        }
+
+        const slots =
+            root._historyFor(
+                key
+            )
+
+        const current =
+            root.documentFor(
+                key
+            )
+
+        const baseline =
+            root._baselineFor(
+                key
+            )
+
+        const dirty =
+            !root._equivalent(
+                current,
+                baseline
+            )
+
+        /*
+         * Nothing to undo and already clean:
+         * true no-op, no IO, no revision, no signals.
+         * Still wipe any stray future (undo-to-clean case is
+         * handled below).
+         */
+        if (
+            slots.past.length === 0 &&
+            !dirty
+        ) {
+            if (
+                slots.future.length === 0
+            ) {
+                return false
+            }
+
+            /*
+             * Undone-to-clean with redo available:
+             * revert is a true checkpoint wipe, no disk write.
+             */
+            root._clearHistory(
+                key
+            )
+
+            const controllerForWipe =
+                root._controllerFor(
+                    key
+                )
+
+            if (
+                controllerForWipe
+            ) {
+                controllerForWipe.completeSaveWhenIdle =
+                    false
+            }
 
             return true
         }
 
-        return controller.queueSave()
+        /*
+         * Revert logic is undo-all:
+         * applying every past before-value in reverse yields
+         * the clean state. Walk it explicitly so the result
+         * matches N sequential undo() calls.
+         *
+         * Coalesced to a single commit for a single write
+         * and single revision. Baseline is authoritative when
+         * history was trimmed (walk would only partially
+         * revert).
+         */
+        let restored =
+            root._clone(
+                current
+            )
+
+        for (
+            let i =
+                slots.past.length - 1;
+            i >= 0;
+            --i
+        ) {
+            restored =
+                root._applyHistoryEntry(
+                    restored,
+                    slots.past[i],
+                    true
+                )
+        }
+
+        if (
+            !root._equivalent(
+                restored,
+                baseline
+            )
+        ) {
+            restored =
+                root._clone(
+                    baseline
+                )
+        }
+
+        /*
+         * Revert must kill the undo/redo graph immediately
+         * and cancels any pending save checkpoint.
+         */
+        root._clearHistory(
+            key
+        )
+
+        const controller =
+            root._controllerFor(
+                key
+            )
+
+        if (
+            controller
+        ) {
+            controller.completeSaveWhenIdle =
+                false
+        }
+
+        /*
+         * History wiped but document already clean
+         * (e.g. dirty flag came only from history):
+         * checkpoint without IO.
+         */
+        if (
+            root._equivalent(
+                current,
+                restored
+            )
+        ) {
+            return true
+        }
+
+        return root._commitDocument(
+            key,
+            restored,
+            "revert()",
+            ""
+        )
     }
 
     // ============================================================
@@ -2977,29 +4523,13 @@ Singleton {
                 fileKey
             )
 
-        const controller =
-            root._controllerFor(
-                key
-            )
-
-        if (!controller) {
-            root._warn(
-                "WRITE",
-                "save() has no controller:",
-                key
-            )
-
-            return false
-        }
-
         const state =
             root._stateFor(
                 key
             )
 
         if (
-            !state.ready &&
-            !state.dirty
+            !state.ready
         ) {
             root._warn(
                 "WRITE",
@@ -3010,15 +4540,140 @@ Singleton {
             return false
         }
 
-        root._debug(
-            "WRITE",
-            "Manual save requested:",
+        const current =
+            root.documentFor(
+                key
+            )
+
+        const baseline =
+            root._baselineFor(
+                key
+            )
+
+        const dirty =
+            !root._equivalent(
+                current,
+                baseline
+            )
+
+        /*
+         * True checkpoint: when already clean, never touch disk.
+         * Still wipe any leftover undo/redo graph (e.g. undo-to-clean
+         * leaves redo available) so save() is a full checkpoint.
+         */
+        if (
+            !dirty
+        ) {
+            const slots =
+                root._historyFor(
+                    key
+                )
+
+            if (
+                slots.past.length === 0 &&
+                slots.future.length === 0
+            ) {
+                return true
+            }
+
+            root._clearHistory(
+                key
+            )
+
+            return true
+        }
+
+        const controller =
+            root._controllerFor(
+                key
+            )
+
+        if (
+            !controller
+        ) {
+            root._warn(
+                "WRITE",
+                "save() has no controller:",
+                key
+            )
+
+            return false
+        }
+
+        /*
+         * Dirty from here. Autosave already queued a write for the
+         * current document via _commitDocument.
+         *
+         * - Pipeline active: checkpoint when idle. The queued newest
+         *   write wins; baseline/history reset in onSaved.
+         * - Idle + last write failed: disk is stale, force rewrite.
+         * - Idle + disk already matches: checkpoint synchronously
+         *   with no IO. A same-content FileView.setText may never
+         *   emit onSaved, which would strand writing=true forever.
+         */
+        if (
+            root._isWritePending(
+                key
+            )
+        ) {
+            controller.completeSaveWhenIdle =
+                true
+
+            const pendingResult =
+                controller.queueSave()
+
+            if (
+                !pendingResult
+            ) {
+                controller.completeSaveWhenIdle =
+                    false
+            }
+
+            return pendingResult
+        }
+
+        if (
+            controller.writeFailed
+        ) {
+            controller.completeSaveWhenIdle =
+                true
+
+            const retryResult =
+                controller.queueSave()
+
+            if (
+                !retryResult
+            ) {
+                controller.completeSaveWhenIdle =
+                    false
+
+                root._setFileState(
+                    key,
+                    {
+                        writePending: false
+                    }
+                )
+            }
+
+            return retryResult
+        }
+
+        root._setBaseline(
             key,
-            "->",
-            controller.filePath
+            current
         )
 
-        return controller.queueSave()
+        root._clearHistory(
+            key
+        )
+
+        root._debug(
+            "WRITE",
+            "Save checkpoint (no write needed):",
+            key
+        )
+
+        return true
     }
 
     function reload(
@@ -3034,7 +4689,9 @@ Singleton {
                 key
             )
 
-        if (!controller) {
+        if (
+            !controller
+        ) {
             root._warn(
                 "LOAD",
                 "reload() has no controller:",
@@ -3045,41 +4702,24 @@ Singleton {
         }
 
         if (
-            root.writingFor(key)
+            root._isWritePending(
+                key
+            )
         ) {
             root._warn(
                 "LOAD",
-                "Reload rejected while writing:",
+                "Reload rejected while write pipeline is active:",
                 key
             )
 
             return false
         }
 
-        /*
-         * Explicit reload intentionally discards local unsaved
-         * state.
-         */
-        controller.writeText =
-            ""
+        controller.completeSaveWhenIdle =
+            false
 
-        controller.queuedWriteText =
-            ""
-
-        root._setFileState(
-            key,
-            {
-                dirty: false
-            }
-        )
-
-        root._debug(
-            "LOAD",
-            "Manual reload requested:",
-            key,
-            "->",
-            controller.filePath
-        )
+        controller.explicitReloadPending =
+            true
 
         return controller.forceReload()
     }
@@ -3091,11 +4731,6 @@ Singleton {
         let success =
             true
 
-        root._debug(
-            "LOAD",
-            "Manual reload requested for all registered files."
-        )
-
         for (
             let i = 0;
             i < keys.length;
@@ -3104,49 +4739,38 @@ Singleton {
             const key =
                 keys[i]
 
-            if (
-                root.writingFor(key)
-            ) {
-                root._warn(
-                    "LOAD",
-                    "Skipping reload while writing:",
-                    key
-                )
-
-                success = false
-
-                continue
-            }
-
             const controller =
                 root._controllerFor(
                     key
                 )
 
-            if (!controller) {
+            if (
+                !controller
+            ) {
+                success = false
+                continue
+            }
+
+            if (
+                root._isWritePending(
+                    key
+                )
+            ) {
                 root._warn(
                     "LOAD",
-                    "No controller during reloadAll():",
+                    "Skipping reload while write pipeline is active:",
                     key
                 )
 
                 success = false
-
                 continue
             }
 
-            controller.writeText =
-                ""
+            controller.completeSaveWhenIdle =
+                false
 
-            controller.queuedWriteText =
-                ""
-
-            root._setFileState(
-                key,
-                {
-                    dirty: false
-                }
-            )
+            controller.explicitReloadPending =
+                true
 
             if (
                 !controller.forceReload()
@@ -3163,18 +4787,21 @@ Singleton {
     // ============================================================
 
     function _ipcGet(
-        path,
+        dataPath,
         fileKey
     ) {
         const value =
             root.get(
-                path,
+                dataPath,
                 undefined,
                 fileKey
             )
 
-        if (value === undefined)
+        if (
+            value === undefined
+        ) {
             return ""
+        }
 
         try {
             return JSON.stringify(
@@ -3192,7 +4819,7 @@ Singleton {
     }
 
     function _ipcSetJson(
-        path,
+        dataPath,
         json,
         fileKey
     ) {
@@ -3203,7 +4830,7 @@ Singleton {
                 )
 
             return root.set(
-                path,
+                dataPath,
                 value,
                 fileKey
             )
@@ -3219,7 +4846,7 @@ Singleton {
     }
 
     function _ipcUpdateJson(
-        section,
+        dataPath,
         json,
         fileKey
     ) {
@@ -3243,7 +4870,7 @@ Singleton {
             }
 
             return root.update(
-                section,
+                dataPath,
                 value,
                 fileKey
             )
@@ -3258,13 +4885,56 @@ Singleton {
         }
     }
 
+    function _ipcGetDocument(
+        fileKey
+    ) {
+        const document =
+            root.documentFor(
+                fileKey
+            )
+
+        try {
+            return JSON.stringify(
+                document
+            )
+        } catch (error) {
+            root._warn(
+                "IPC",
+                "Failed to serialize document:",
+                error
+            )
+
+            return ""
+        }
+    }
+
+    function _ipcHistory(
+        fileKey
+    ) {
+        try {
+            return JSON.stringify(
+                root.historyAt(
+                    fileKey
+                )
+            )
+        } catch (error) {
+            root._warn(
+                "IPC",
+                "Failed to serialize history:",
+                error
+            )
+
+            return ""
+        }
+    }
+
     // ============================================================
     // LOGGING
     // ============================================================
 
     function _debug() {
         if (
-            !root.debugLogging
+            !root.isDebugLogging
         ) {
             return
         }

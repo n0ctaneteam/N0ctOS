@@ -1,3 +1,5 @@
+//@ pragma UseQApplication
+
 import QtQuick
 import Quickshell
 
@@ -11,7 +13,7 @@ ShellRoot {
 
     ServiceHost {
         id: serviceHost
-    }
+    } 
 
     Variants {
         model: Quickshell.screens

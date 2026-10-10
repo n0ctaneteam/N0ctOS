@@ -21,8 +21,8 @@ Singleton {
     // PUBLIC STATE
     // ============================================================
 
-    readonly property bool ready:
-        Config.ready
+    readonly property bool isReady:
+        Config.isReady
 
     /*
      * Remembered screen priority.
@@ -91,7 +91,7 @@ Singleton {
          * topology changing, so only primary resolution is needed.
          */
         function onRevisionChanged() {
-            if (!root.ready)
+            if (!root.isReady)
                 return
 
             root.syncFromConfig()
@@ -120,8 +120,8 @@ Singleton {
         root.refresh()
     }
 
-    onReadyChanged: {
-        if (!root.ready)
+    onIsReadyChanged: {
+        if (!root.isReady)
             return
 
         root.syncFromConfig()
@@ -133,7 +133,7 @@ Singleton {
     // ============================================================
 
     function syncFromConfig() {
-        if (!Config.ready)
+        if (!Config.isReady)
             return
 
         const stored =
@@ -208,7 +208,7 @@ Singleton {
     }
 
     function saveNames(names) {
-        if (!Config.ready)
+        if (!Config.isReady)
             return false
 
         return Config.set(
@@ -222,7 +222,7 @@ Singleton {
     // ============================================================
 
     function refresh() {
-        if (!Config.ready)
+        if (!Config.isReady)
             return
 
         if (root._refreshing)

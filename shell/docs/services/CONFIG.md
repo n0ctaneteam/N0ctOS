@@ -6,7 +6,7 @@
 
 It gives every shell component and service one consistent place to read and write JSON configuration without touching files directly, creating `FileView` objects, or implementing persistence logic.
 
-The service supports multiple registered configuration files, reactive documents, per-file state, file watching with debounced reloads, atomic writes with a save queue, a path registry with CRUD, and a high-level IPC interface.
+The service supports multiple registered configuration files, reactive documents, per-file state, autosave-everything with explicit `save()` checkpoints, delta-based undo/redo/revert history, file watching with debounced reloads, atomic writes with a save queue, a path registry with CRUD, and a high-level IPC interface.
 
 The normal usage pattern is:
 
@@ -164,27 +164,26 @@ import qs.services
 | ----------- | --------------- |
 | `Config.data` | Current document of the default file (`homeConfig`). Equivalent to `documentFor("homeConfig")`. Reactive. |
 | `Config.documents` | Currently loaded documents indexed by file key. Reactive. |
-| `Config.ready` | `true` when the default document has been loaded and initialized. |
-| `Config.writing` | `true` when the default file has an active write operation. |
-| `Config.dirty` | `true` when the default document has unsaved changes. |
+| `Config.isReady` | `true` when the default document has been loaded and initialized. |
+| `Config.isWriting` | `true` while the default file has a write pipeline active (`writing`/`writePending`/queued text). |
+| `Config.isDirty` | `true` when the default document differs from its last `save()`/load baseline. Autosave already wrote the file; `save()` clears this. |
 | `Config.revision` | Revision number of the default document. Increases when the in-memory document changes. |
 | `Config.configPath` | Resolved physical path of `homeConfig`, e.g. `/home/user/.config/N0ctOS/config.json`. |
 | `Config.paths` | Registered file-key table (`key -> resolved physical path`). Reactive. |
 | `Config.pathKeys` | List of registered configuration keys. Reactive. |
 | `Config.defaultFileKey` | Default file key (`"homeConfig"`). |
-| `Config.debugLogging` | Read-only mirror of `ConfigStore.debugLogging`. Set via `ConfigStore.debugLogging`. |
+| `Config.isDebugLogging` | Read-only mirror of `ConfigStore.isDebugLogging`. Set via `ConfigStore.isDebugLogging`. |
 
 ## Reads
 
 | How to call | What does it do |
 | ----------- | --------------- |
-| `Config.get(path, fallbackValue, fileKey)` | Reads a value at a dotted path. Returns `fallbackValue` when missing. Unknown `fileKey` falls back to `homeConfig`. |
-| `Config.has(path, fileKey)` | Checks whether a property exists. Returns `true` when it exists, `false` when it does not. Unknown `fileKey` falls back to `homeConfig`. |
-| `Config.section(path, fallbackValue, fileKey)` | Convenience wrapper around `get()` for sections. Defaults `fallbackValue` to `{}` when omitted. Unknown `fileKey` falls back to `homeConfig`. |
-| `Config.documentFor(fileKey)` | Returns the complete document for a file key. Unknown `fileKey` falls back to `homeConfig`. Returns `{}` when no document exists. |
-| `Config.readyFor(fileKey)` | `true` when the given file is ready. Unknown `fileKey` falls back to `homeConfig`. |
-| `Config.writingFor(fileKey)` | `true` when the given file has an active write. Unknown `fileKey` falls back to `homeConfig`. |
-| `Config.dirtyFor(fileKey)` | `true` when the given file has unsaved changes. Unknown `fileKey` falls back to `homeConfig`. |
+| `Config.get(dataPath, fallbackValue, fileKey)` | Reads a value at a dotted data path. Returns `fallbackValue` when missing. Unknown `fileKey` warns once, then falls back to `homeConfig`. |
+| `Config.has(dataPath, fileKey)` | Checks whether a property exists. Returns `true` when it exists, `false` when it does not. Unknown `fileKey` warns once, then falls back to `homeConfig`. |
+| `Config.documentFor(fileKey)` | Returns a snapshot clone of the complete document for a file key. Mutating the returned object never affects the store; use `set()`/`update()`/`remove()`/`undo()`/`redo()`/`revert()`. Unknown `fileKey` warns once, then falls back to `homeConfig`. Returns `{}` when no document exists. |
+| `Config.isReadyFor(fileKey)` | `true` when the given file is ready. Unknown `fileKey` falls back to `homeConfig`. |
+| `Config.isWritingFor(fileKey)` | `true` while the given file has a write pipeline active. Unknown `fileKey` falls back to `homeConfig`. |
+| `Config.isDirtyFor(fileKey)` | `true` when the given file differs from its baseline. Unknown `fileKey` falls back to `homeConfig`. |
 | `Config.revisionFor(fileKey)` | Revision number for the given file, `0` when unknown. Unknown `fileKey` falls back to `homeConfig`. |
 
 | Example | Result |
@@ -193,43 +192,61 @@ import qs.services
 | `Config.get("wifi.enabled", true, "networkConfig")` | Stored value from `networkConfig`, or `true` when missing; `homeConfig` value when key is unknown |
 | `Config.has("notifications.isDnd")` | `true` when the property exists, `false` when it does not |
 | `Config.has("wifi.enabled", "networkConfig")` | `true` when the property exists in `networkConfig`, `false` when it does not |
-| `Config.section("notifications", {})` | Section object, or `{}` when missing |
-| `Config.section("wifi", {}, "networkConfig")` | Section object from `networkConfig`, or `{}` when missing |
-| `Config.documentFor("networkConfig")` | Full document object for `networkConfig` (`homeConfig` document when key is unknown) |
-| `Config.readyFor("networkConfig")` | `true` when ready, `false` otherwise |
-| `Config.writingFor("networkConfig")` | `true` while writing, `false` otherwise |
-| `Config.dirtyFor("networkConfig")` | `true` when unsaved changes exist, `false` otherwise |
+| `Config.documentFor("networkConfig")` | Full document snapshot for `networkConfig` (`homeConfig` document when key is unknown). Read-only: mutate via `set()`/`update()`/`remove()`, never by editing the returned object |
+| `Config.historyAt("networkConfig")` | `{past:[...], future:[...], canUndo, canRedo, count, limit, isDirty}` for `networkConfig`. Each entry is `{op, dataPath, changeCount, changes:[{path, beforeExists, beforeValue, afterExists, afterValue}]}`. `future[0]` is the next redo. Unknown key falls back to `homeConfig` |
+| `Config.historyFor("networkConfig")` | Alias of `historyAt()`. Kept for convenience |
+| `Config.isReadyFor("networkConfig")` | `true` when ready, `false` otherwise |
+| `Config.isWritingFor("networkConfig")` | `true` while writing, `false` otherwise |
+| `Config.isDirtyFor("networkConfig")` | `true` when unsaved changes exist, `false` otherwise |
 | `Config.revisionFor("networkConfig")` | Revision number, `0` when no state exists |
 
 ## Writes
 
 | How to call | What does it do |
 | ----------- | --------------- |
-| `Config.set(path, value, fileKey)` | Creates or updates one value. Missing intermediate objects are created automatically. Queues a save. Rejects empty paths and `undefined` values. Unknown `fileKey` falls back to `homeConfig`. |
-| `Config.update(section, patch, fileKey)` | Deep-merges an object patch into a section, then persists through the normal `set()` path. Requires a non-empty section and an object patch. Unknown `fileKey` falls back to `homeConfig`. |
-| `Config.remove(path, fileKey)` | Deletes a nested property. Returns `false` and changes nothing when the path does not exist. Unknown `fileKey` falls back to `homeConfig`. |
+| `Config.set(dataPath, value, fileKey)` | Creates or updates one value. Missing intermediate objects are created automatically. Autosaves immediately (memory + disk write queued). No-op (`true`, no write, no revision) when already equal. Rejects empty paths and `undefined` values. Unknown `fileKey` warns once, then falls back to `homeConfig`. |
+| `Config.update(dataPath, value, fileKey)` | Deep-merges an object value into a data path, then persists through the normal autosave path. Requires a non-empty path and an object value. Unknown `fileKey` warns once, then falls back to `homeConfig`. |
+| `Config.remove(dataPath, fileKey)` | Deletes a nested property and autosaves. Returns `false` and changes nothing when the path does not exist. Unknown `fileKey` warns once, then falls back to `homeConfig`. |
 
 | Example | Result |
 | ------- | ------ |
-| `Config.set("notifications.isDnd", true)` | `true` and document changed plus save queued; `true` with no write when already equal; `false` on empty path or `undefined` value |
-| `Config.set("wifi.enabled", false, "networkConfig")` | `true` and `networkConfig` document changed plus save queued (`homeConfig` when key is unknown); `false` when rejected |
-| `Config.update("notifications", {"isDnd": true})` | `true` and section deep-merged plus save queued; `false` when section is empty or patch is not an object |
-| `Config.update("wifi", {"enabled": true}, "networkConfig")` | `true` and `networkConfig` section deep-merged plus save queued; `false` when rejected |
-| `Config.remove("notifications.isDnd")` | `true` and property deleted plus save queued; `false` when the path does not exist |
-| `Config.remove("wifi.enabled", "networkConfig")` | `true` and property deleted from `networkConfig` plus save queued; `false` when the path does not exist |
+| `Config.set("notifications.isDnd", true)` | `true` and document changed plus autosave write queued; `true` with no write/revision when already equal; `false` on empty path or `undefined` value |
+| `Config.set("wifi.enabled", false, "networkConfig")` | `true` and `networkConfig` document changed plus autosave write queued (`homeConfig` when key is unknown); `false` when rejected |
+| `Config.update("notifications", {"isDnd": true})` | `true` and value deep-merged plus autosave write queued; `false` when path is empty or value is not an object |
+| `Config.update("wifi", {"enabled": true}, "networkConfig")` | `true` and `networkConfig` value deep-merged plus autosave write queued; `false` when rejected |
+| `Config.remove("notifications.isDnd")` | `true` and property deleted plus autosave write queued; `false` when the path does not exist |
+| `Config.remove("wifi.enabled", "networkConfig")` | `true` and property deleted from `networkConfig` plus autosave write queued; `false` when the path does not exist |
+
+## Undo history
+
+Model: **autosave everything + explicit checkpoint**. Every `set()`/`update()`/`remove()`/`undo()`/`redo()`/`revert()` updates memory *and* immediately queues a disk write. `isDirty` means "document differs from the last `save()`/load baseline", not "disk differs" — after autosave the file already matches memory, but the file stays dirty until `save()` establishes a new baseline and wipes history.
+
+Each mutation records one compact forward-delta entry (`past`), up to `historyLimit` (100) entries for `past + future` combined. When over the limit the oldest `past` entry is discarded first so redo is preserved. A new mutation clears `future` (kills redo). `save()` and `revert()` wipe both stacks.
+
+| How to call | What does it do |
+| ----------- | --------------- |
+| `Config.undo(fileKey)` | Moves the newest `past` entry to `future`, restores its before-values, autosaves. Returns `false` when `past` is empty or the file is not ready. A no-op undo (entry resolves to the current document) still advances the stack but skips write/revision. Any undo cancels a pending `save()` checkpoint. Defaults to `homeConfig`. |
+| `Config.redo(fileKey)` | Moves the newest `future` entry back to `past`, restores its after-values, autosaves. Returns `false` when `future` is empty or the file is not ready. No-op redos advance the stack without write/revision. A new `set()`/`update()`/`remove()` clears `future`. Defaults to `homeConfig`. |
+| `Config.revert(fileKey)` | Logically `while (canUndo) undo()`: replays every `past` before-value in reverse to restore the clean baseline, coalesced into a **single** document commit (single write, single revision, single `documentChanged`). Then wipes `past + future`. Returns `false` when not ready, or when `past` is empty *and* already clean. Undone-to-clean with redo available wipes without disk IO. Defaults to `homeConfig`. |
+| `Config.save(fileKey)` | True checkpoint. Fails (`false`) when not ready. Clean + empty history: `true` no-op, no IO. Clean with leftover history (e.g. undo-to-clean leaves redo): wipes history, `true`, no IO, no revision. Dirty + write pipeline active: marks checkpoint-when-idle and ensures the newest state is queued; baseline/history reset in `onSaved`. Dirty + idle + last write failed: forces a rewrite, checkpoint on `onSaved`. Dirty + idle + disk already matches (normal autosave case): sets baseline + wipes history synchronously, `true`, no IO (avoids a same-content write that would never complete). |
+
+| IPC | Result |
+| --- | ------ |
+| `qs ipc call n0ctos-config undo` / `redo` / `revert` | `"true"` on success; `"false"` when there is nothing to undo/redo, when `revert` is already clean, or when the file is not ready |
+| `qs ipc call n0ctos-config undoAt networkConfig` (same `redoAt`, `revertAt`) | Per-file variants |
 
 ## File control
 
 | How to call | What does it do |
 | ----------- | --------------- |
-| `Config.save(fileKey)` | Explicitly requests a save of the current document. Defaults to `homeConfig`. Normal `set()`/`update()`/`remove()` already queue saves. |
-| `Config.reload(fileKey)` | Explicitly reloads one file from disk. Discards unsaved local state for that file. Defaults to `homeConfig`. Rejected while writing. |
+| `Config.save(fileKey)` | True checkpoint (see Undo history). Defaults to `homeConfig`. Normal `set()`/`update()`/`remove()` already autosave; `save()` only moves the baseline and wipes history. |
+| `Config.reload(fileKey)` | Explicitly reloads one file from disk. Discards unsaved local state for that file (baseline = disk, history wiped). Defaults to `homeConfig`. Rejected while the write pipeline is active. |
 | `Config.reloadAll()` | Reloads every registered file. Skips files currently being written. |
 
 | Example | Result |
 | ------- | ------ |
-| `Config.save()` | `true` and save queued for `homeConfig`; `false` when no controller exists or the file is neither ready nor dirty |
-| `Config.save("networkConfig")` | `true` and save queued for `networkConfig`; `false` when no controller exists or the file is neither ready nor dirty |
+| `Config.save()` | `true` checkpoint for `homeConfig` (sync when idle, deferred to `onSaved` while writes are in flight); `false` when no controller exists or not ready |
+| `Config.save("networkConfig")` | `true` checkpoint for `networkConfig`; `false` when no controller exists or not ready |
 | `Config.reload()` | `true` and `homeConfig` reloaded (local dirty state discarded); `false` while writing or when no controller exists |
 | `Config.reload("networkConfig")` | `true` and `networkConfig` reloaded (local dirty state discarded); `false` while writing or when no controller exists |
 | `Config.reloadAll()` | `true` when every file reloaded; `false` when one or more files were skipped or failed |
@@ -238,12 +255,12 @@ import qs.services
 
 | How to call | What does it do |
 | ----------- | --------------- |
-| `Config.registerPath(fileKey, path)` | Registers one logical file key. Same key plus same path is idempotent. Rejects empty keys/paths, same key with a different path, and duplicate physical paths. |
+| `Config.registerPath(fileKey, fsPath)` | Registers one logical file key. Same key plus same path is idempotent. Rejects empty keys/paths, same key with a different path, and duplicate physical paths. |
 | `Config.registerPaths(pathTable)` | Registers multiple files at once. Requires an object. Returns `false` when one or more entries fail. |
 | `Config.hasPath(fileKey)` | Registry lookup. Returns `true` when the key is registered, `false` otherwise. Does not fall back to `homeConfig`. |
 | `Config.pathFor(fileKey)` | Returns the resolved physical path for a key. Unknown keys fall back to the `homeConfig` path. |
-| `Config.updatePath(fileKey, path)` | Changes the physical path of an existing non-default key, discards its old document, and loads the new file. Rejects `homeConfig`, unregistered keys, empty paths, dirty/writing files, and duplicate physical paths. |
-| `Config.removePath(fileKey)` | Removes a non-default key plus its document, state, and watcher. Leaves the physical file untouched. Rejects `homeConfig`, unregistered keys, and dirty/writing files. |
+| `Config.updatePath(fileKey, fsPath)` | Changes the physical path of an existing non-default key, discards its old document, and loads the new file. Rejects `homeConfig`, unregistered keys, empty paths, active write pipelines, and duplicate physical paths. |
+| `Config.removePath(fileKey)` | Removes a non-default key plus its document, state, and watcher. Leaves the physical file untouched. Rejects `homeConfig`, unregistered keys, and active write pipelines. |
 
 | Example | Result |
 | ------- | ------ |
@@ -251,8 +268,8 @@ import qs.services
 | `Config.registerPaths({networkConfig: "~/.config/N0ctOS/network.json"})` | `true` when every entry registered; `false` when one or more entries failed or the table is not an object |
 | `Config.hasPath("networkConfig")` | `true` when registered, `false` otherwise (no fallback) |
 | `Config.pathFor("networkConfig")` | Resolved path, e.g. `"/home/user/.config/N0ctOS/network.json"`; `homeConfig` path when the key is unknown |
-| `Config.updatePath("networkConfig", "~/.config/N0ctOS/network-v2.json")` | `true` and mapping replaced plus old document discarded plus new file loaded; `false` for `homeConfig`, unregistered keys, dirty/writing files, or duplicate physical paths |
-| `Config.removePath("networkConfig")` | `true` and registry entry, document, state, and watcher removed (physical file remains); `false` for `homeConfig`, unregistered keys, or dirty/writing files |
+| `Config.updatePath("networkConfig", "~/.config/N0ctOS/network-v2.json")` | `true` and mapping replaced plus old document discarded plus new file loaded; `false` for `homeConfig`, unregistered keys, active write pipeline (writing/writePending/queued — baseline-dirty alone does not block), or duplicate physical paths |
+| `Config.removePath("networkConfig")` | `true` and registry entry, document, state, and watcher removed (physical file remains); `false` for `homeConfig`, unregistered keys, or active write pipeline |
 
 Path expansion understands:
 
@@ -319,19 +336,20 @@ The IPC layer exposes high-level configuration operations. A terminal command do
 
 | How to call | What does it do |
 | ----------- | --------------- |
-| `get <path>` | Reads a value from `homeConfig` as JSON. Returns `""` when missing. |
-| `has <path>` | Checks whether a value exists in `homeConfig`. |
-| `setJson <path> <json>` | Parses `<json>` and writes it to `homeConfig`. |
-| `updateJson <section> <json-object>` | Deep-merges a JSON object patch into a `homeConfig` section. Rejects non-object patches. |
-| `remove <path>` | Deletes a value from `homeConfig`. |
+| `get <dataPath>` | Reads a value from `homeConfig` as JSON. Returns `""` when missing. |
+| `getDocument` | Reads the whole `homeConfig` document as JSON. Returns `""` on failure. |
+| `has <dataPath>` | Checks whether a value exists in `homeConfig`. |
+| `setJson <dataPath> <json>` | Parses `<json>` and writes it to `homeConfig`. |
+| `updateJson <dataPath> <json-object>` | Deep-merges a JSON object value into a `homeConfig` data path. Rejects non-object values. |
+| `remove <dataPath>` | Deletes a value from `homeConfig`. |
 
 | Example | Result |
 | ------- | ------ |
 | `qs ipc call n0ctos-config get notifications.isDnd` | `"true"` (JSON value), or `""` when missing |
 | `qs ipc call n0ctos-config has notifications.isDnd` | `"true"` when it exists, `"false"` when it does not |
-| `qs ipc call n0ctos-config setJson notifications.isDnd true` | `"true"` and value written plus save queued; `"false"` on invalid JSON or rejected write |
-| `qs ipc call n0ctos-config updateJson notifications '{"isDnd":true}'` | `"true"` and section merged plus save queued; `"false"` on invalid JSON or non-object patch |
-| `qs ipc call n0ctos-config remove notifications.isDnd` | `"true"` and property deleted plus save queued; `"false"` when the path does not exist |
+| `qs ipc call n0ctos-config setJson notifications.isDnd true` | `"true"` and value written plus autosave write queued; `"false"` on invalid JSON or rejected write |
+| `qs ipc call n0ctos-config updateJson notifications '{"isDnd":true}'` | `"true"` and value merged plus autosave write queued; `"false"` on invalid JSON or non-object value |
+| `qs ipc call n0ctos-config remove notifications.isDnd` | `"true"` and property deleted plus autosave write queued; `"false"` when the path does not exist |
 
 `<json>` must be valid JSON.
 
@@ -367,7 +385,7 @@ qs ipc call n0ctos-config setJson \
     '"random"'
 ```
 
-Object patch:
+Object value:
 
 ```bash
 qs ipc call n0ctos-config updateJson \
@@ -415,7 +433,7 @@ false
 | ----------- | --------------- |
 | `isReady` | Returns whether `homeConfig` is ready. |
 | `isWriting` | Returns whether `homeConfig` is writing. |
-| `isDirty` | Returns whether `homeConfig` has unsaved changes. |
+| `isDirty` | Returns whether `homeConfig` has uncommitted change history. |
 | `getPath` | Returns the resolved `homeConfig` path. |
 | `getRevision` | Returns the `homeConfig` revision number. |
 
@@ -423,7 +441,7 @@ false
 | ------- | ------ |
 | `qs ipc call n0ctos-config isReady` | `"true"` when ready, `"false"` otherwise |
 | `qs ipc call n0ctos-config isWriting` | `"true"` while writing, `"false"` otherwise |
-| `qs ipc call n0ctos-config isDirty` | `"true"` when unsaved changes exist, `"false"` otherwise |
+| `qs ipc call n0ctos-config isDirty` | `"true"` when change history exists, `"false"` otherwise |
 | `qs ipc call n0ctos-config getPath` | `"/home/user/.config/N0ctOS/config.json"` |
 | `qs ipc call n0ctos-config getRevision` | `"3"` (current revision number) |
 
@@ -469,13 +487,13 @@ returns:
 
 | How to call | What does it do |
 | ----------- | --------------- |
-| `save` | Saves `homeConfig`. |
-| `reload` | Reloads `homeConfig`, discarding unsaved state. Rejected while writing. |
+| `save` | True checkpoint for `homeConfig` (sync when idle, deferred while writes are in flight; see Undo history). |
+| `reload` | Reloads `homeConfig`, discarding unsaved state (baseline = disk, history wiped). Rejected while the write pipeline is active. |
 | `reloadAll` | Reloads every registered file. Skips files currently being written. |
 
 | Example | Result |
 | ------- | ------ |
-| `qs ipc call n0ctos-config save` | `"true"` and save queued; `"false"` when no controller exists or the file is neither ready nor dirty |
+| `qs ipc call n0ctos-config save` | `"true"` checkpoint (sync or deferred); `"false"` when no controller exists or not ready |
 | `qs ipc call n0ctos-config reload` | `"true"` and file reloaded; `"false"` while writing or when no controller exists |
 | `qs ipc call n0ctos-config reloadAll` | `"true"` when every file reloaded; `"false"` when one or more files were skipped or failed |
 
@@ -582,7 +600,7 @@ This removes the logical registry entry and its watcher. It does not delete the 
 | `getAt <path> <fileKey>` | Reads a value from the given file as JSON. Returns `""` when missing. Unknown keys fall back to `homeConfig`. |
 | `hasAt <path> <fileKey>` | Checks existence in the given file. Unknown keys fall back to `homeConfig`. |
 | `setJsonAt <path> <json> <fileKey>` | Writes parsed JSON to the given file. Unknown keys fall back to `homeConfig`. |
-| `updateJsonAt <section> <json-object> <fileKey>` | Merges an object patch into the given file. Unknown keys fall back to `homeConfig`. |
+| `updateJsonAt <dataPath> <json-object> <fileKey>` | Merges an object value into the given file. Unknown keys fall back to `homeConfig`. |
 | `removeAt <path> <fileKey>` | Deletes a value from the given file. Unknown keys fall back to `homeConfig`. |
 | `saveAt <fileKey>` | Saves the given file. |
 | `reloadAt <fileKey>` | Reloads the given file, discarding unsaved state. Rejected while writing. |
@@ -596,10 +614,14 @@ This removes the logical registry entry and its watcher. It does not delete the 
 | `qs ipc call n0ctos-config getRevisionAt networkConfig` | `"3"` (revision for that file) |
 | `qs ipc call n0ctos-config getAt wifi.enabled networkConfig` | `"true"` (JSON value), or `""` when missing |
 | `qs ipc call n0ctos-config hasAt wifi.enabled networkConfig` | `"true"` when it exists, `"false"` when it does not |
-| `qs ipc call n0ctos-config setJsonAt wifi.enabled false networkConfig` | `"true"` and value written plus save queued; `"false"` when rejected |
-| `qs ipc call n0ctos-config updateJsonAt wifi '{"enabled":true}' networkConfig` | `"true"` and section merged plus save queued; `"false"` on invalid or non-object patch |
-| `qs ipc call n0ctos-config removeAt wifi.enabled networkConfig` | `"true"` and property deleted plus save queued; `"false"` when missing |
-| `qs ipc call n0ctos-config saveAt networkConfig` | `"true"` and save queued; `"false"` when no controller exists or the file is neither ready nor dirty |
+| `qs ipc call n0ctos-config setJsonAt wifi.enabled false networkConfig` | `"true"` and value written plus autosave write queued; `"false"` when rejected |
+| `qs ipc call n0ctos-config getDocument` | Whole `homeConfig` document snapshot as JSON, or `""` on failure |
+| `qs ipc call n0ctos-config getDocumentAt networkConfig` | Whole `networkConfig` document snapshot as JSON, or `""` on failure |
+| `qs ipc call n0ctos-config history` | `{"past":[{op,dataPath,changeCount,changes:[{path,beforeExists,beforeValue,afterExists,afterValue}]}...],"future":[...],"canUndo":bool,"canRedo":bool,"count":n,"limit":100,"isDirty":bool}` for `homeConfig`. `future[0]` is the next redo |
+| `qs ipc call n0ctos-config historyAt networkConfig` | Same detail for `networkConfig` |
+| `qs ipc call n0ctos-config updateJsonAt wifi '{"enabled":true}' networkConfig` | `"true"` and value merged plus autosave write queued; `"false"` on invalid or non-object value |
+| `qs ipc call n0ctos-config removeAt wifi.enabled networkConfig` | `"true"` and property deleted plus autosave write queued; `"false"` when missing |
+| `qs ipc call n0ctos-config saveAt networkConfig` | `"true"` checkpoint (sync or deferred); `"false"` when no controller exists or not ready |
 | `qs ipc call n0ctos-config reloadAt networkConfig` | `"true"` and file reloaded; `"false"` while writing or when no controller exists |
 
 For example, read from another file:
@@ -734,7 +756,7 @@ revision
 observed through:
 
 ```qml
-Config.readyFor(
+Config.isReadyFor(
     "networkConfig"
 )
 ```
@@ -742,9 +764,9 @@ Config.readyFor(
 or the default-file shortcuts:
 
 ```qml
-Config.ready
-Config.writing
-Config.dirty
+Config.isReady
+Config.isWriting
+Config.isDirty
 Config.revision
 ```
 
@@ -1016,7 +1038,7 @@ Result:
 }
 ```
 
-Existing nested properties not present in the patch remain unchanged.
+Existing nested properties not present in the value remain unchanged.
 
 ### Revision tracking
 
@@ -1053,7 +1075,7 @@ IPC operations
 `ConfigStore` exposes:
 
 ```qml
-ConfigStore.debugLogging
+ConfigStore.isDebugLogging
 ```
 
 The default value is:
@@ -1081,10 +1103,10 @@ Debug logging does not intentionally print configuration values. Warnings and er
 To disable normal debug output:
 
 ```qml
-ConfigStore.debugLogging = false
+ConfigStore.isDebugLogging = false
 ```
 
-`Config.debugLogging` is a read-only mirror and cannot be assigned directly.
+`Config.isDebugLogging` is a read-only mirror and cannot be assigned directly.
 
 ### IPC control
 
@@ -1193,19 +1215,13 @@ is rejected.
 
 ### Dirty files cannot change registry ownership
 
-A file key cannot be updated or removed while it has unsaved local changes or an active write:
+A file key cannot be updated or removed while its write pipeline is active:
 
 ```text
-dirty
+writing / writePending / queued write text
 ```
 
-or:
-
-```text
-writing
-```
-
-This prevents pending local changes from being detached from their file.
+Baseline-dirty alone (unsaved changes, pipeline idle) does not block. This prevents in-flight writes from being detached from their file.
 
 ### No arbitrary path writes through normal API
 
@@ -1262,7 +1278,7 @@ An explicit:
 Config.reload()
 ```
 
-intentionally discards unsaved local changes for that file.
+intentionally discards unsaved local changes for that file (baseline = disk content, history wiped).
 
 ---
 
@@ -1344,16 +1360,16 @@ MouseArea {
 The service:
 
 ```text
-changes document
+changes document (revision++, documentUpdated)
       ↓
-marks dirty
+marks dirty (document != baseline)
       ↓
-queues save
+queues autosave write
       ↓
-writes JSON
+writes JSON (baseline untouched)
 ```
 
-The UI does not perform file operations itself.
+`save()` later establishes the checkpoint (baseline = document, history wiped). The UI does not perform file operations itself.
 
 ---
 
@@ -1425,7 +1441,7 @@ Config.update(
 )
 ```
 
-A non-object patch returns `false`.
+A non-object value returns `false`.
 
 ---
 
@@ -1511,19 +1527,19 @@ Column {
     Text {
         text:
             "Ready: " +
-            Config.ready
+            Config.isReady
     }
 
     Text {
         text:
             "Writing: " +
-            Config.writing
+            Config.isWriting
     }
 
     Text {
         text:
             "Dirty: " +
-            Config.dirty
+            Config.isDirty
     }
 
     Text {
@@ -1542,7 +1558,7 @@ Column {
 For another file, use:
 
 ```qml
-Config.readyFor(
+Config.isReadyFor(
     "networkConfig"
 )
 ```
@@ -1574,7 +1590,7 @@ Rectangle {
 }
 ```
 
-Explicit reload discards unsaved local state for that file. While a write is active it returns `false`.
+Explicit reload discards unsaved local state for that file (baseline = disk, history wiped). While the write pipeline is active it returns `false`.
 
 ---
 
@@ -1668,7 +1684,7 @@ The physical JSON file remains untouched by `removePath()`.
 Enable:
 
 ```qml
-ConfigStore.debugLogging = true
+ConfigStore.isDebugLogging = true
 ```
 
 Then perform:
@@ -2290,25 +2306,25 @@ Nested objects are therefore not mutated directly as the normal state-transition
 
 ## 6.15 Revision tracking
 
-Each file has a state object:
+Each file has derived state:
 
 ```qml
 {
-    ready: false,
-    writing: false,
-    dirty: false,
-    revision: 0
+    ready: bool,       // loaded at least once
+    writing: bool,     // FileView write in flight
+    writePending: bool,// write or queued write outstanding
+    revision: int      // bumps per in-memory document change
 }
 ```
 
-The revision increases when the in-memory document changes.
+`dirty` is derived (`document != baseline`), not stored. The revision increases when the in-memory document changes.
 
 Conceptually:
 
 ```text
 revision 1
     │
-external reload
+external reload (undoable entry, baseline stays)
     ▼
 revision 2
     │
@@ -2317,7 +2333,7 @@ set()
 revision 3
 ```
 
-A `set()` that leaves the document unchanged is a no-op and does not increment the revision or start a write.
+A `set()` that leaves the document unchanged is a no-op and does not increment the revision or start a write. A no-op `undo()`/`redo()` still advances the history stack but skips revision/signal/write.
 
 ---
 
@@ -2420,7 +2436,7 @@ replace document
 
 This makes the reactive state transition explicit and prevents consumers from holding references that change without a document replacement.
 
-Returned documents and values that are cloned include `set()` inputs and internal merge results. IPC results are serialized with `JSON.stringify()` rather than exposing live objects.
+Returned documents are snapshot clones: `documentFor()`/`getDocument` return a deep copy, so mutating the result never affects the store. `set()` inputs and internal merge results are likewise cloned. IPC results are serialized with `JSON.stringify()` rather than exposing live objects.
 
 ---
 
@@ -2483,26 +2499,26 @@ set()
 
 update()
     │
-    └── deep-merge one section
+    └── deep-merge one data path
 ```
 
 `update()` eventually uses the normal `set()` path for persistence:
 
 ```text
-update(section, patch)
+update(dataPath, value)
     ↓
-get(section, {})
+get(dataPath, {})
     ↓
-deepMerge(clone(current), patch)
+deepMerge(clone(current), value)
     ↓
-set(section, merged)
+set(dataPath, merged)
     ↓
 queueSave()
 ```
 
 ---
 
-## 6.21 Write lifecycle
+## 6.21 Write lifecycle (autosave + checkpoint)
 
 A normal configuration write follows:
 
@@ -2510,10 +2526,10 @@ A normal configuration write follows:
 Config.set()
       │
       ▼
-document replaced
+document replaced (revision++, documentUpdated)
       │
       ▼
-dirty = true
+isDirty = (document != baseline) → true
       │
       ▼
 queueSave()
@@ -2528,13 +2544,21 @@ FileView.setText()
 atomic write
       │
       ▼
-onSaved
-      │
-      ▼
-dirty = false
+onSaved → writing = false (baseline/history untouched)
 ```
 
-`set()`, `update()`, and `remove()` all queue saves through the file's controller. If the controller does not exist yet, the dirty state remains in the store and `onObjectAdded()` queues the save once the controller appears.
+Autosave writes never move the baseline. Only an explicit `save()` checkpoint does:
+
+```text
+dirty + pipeline active → completeSaveWhenIdle = true,
+    newest state queued, baseline/history reset in onSaved
+dirty + idle + writeFailed → forced rewrite, checkpoint in onSaved
+dirty + idle + disk matches → baseline = current + clearHistory
+    synchronously, no IO
+clean → wipe leftover history if any, no IO
+```
+
+`set()`, `update()`, `remove()`, `undo()`, `redo()`, and `revert()` all queue saves through the file's controller. If the controller does not exist yet, the dirty state remains in the store and `onObjectAdded()` queues the save once the controller appears. Any mutation after `save()` cancels a pending `completeSaveWhenIdle` checkpoint.
 
 ---
 
@@ -2615,7 +2639,7 @@ mkdir -p parent
 FileView.setText()
 ```
 
-This runs through a `Process` (`mkdir -p`). While the directory is missing, writes are queued as `dirty`. On failure the pending state is preserved, `dirty` remains `true`, and `saveError` is emitted.
+This runs through a `Process` (`mkdir -p`). While the directory is missing, writes stay queued. On failure the write state is cleared, `writeFailed` is set, the document stays dirty (baseline untouched), and `saveError` is emitted. A later `save()` with `writeFailed` set forces a rewrite instead of a sync checkpoint.
 
 ---
 
@@ -2631,7 +2655,7 @@ and automatically saved, so the default file is created on first run.
 
 Other registered files can remain absent until they are explicitly written.
 
-A previously loaded file that disappears externally is reset to `{}` with an external-reload notification, unless local state is dirty. Dirty local state is preserved.
+A previously loaded file that disappears externally is treated as an undoable external change: the old document becomes a `past` entry (`op: "externalReload"`), the document becomes `{}`, the baseline stays where it was (so the file reads dirty), and `externalReload` is emitted. `undo()` restores the pre-delete document and autosaves it.
 
 ---
 
@@ -2672,25 +2696,22 @@ externalReload
 
 Only changed documents bump the revision and emit `documentUpdated`.
 
+A real external change is recorded as an undoable history entry (`op: "externalReload"`). The baseline does **not** move, so the file reads dirty and `undo()` restores the pre-external document (autosaving it back to disk).
+
 ---
 
 ## 6.27 Own writes versus external writes
 
 A watcher can also report changes caused by the service's own atomic write.
 
-Therefore the service tracks:
+Therefore the service tracks the full write pipeline:
 
 ```text
-writing
+_isWritePending = writing || writePending
+    || writeText != "" || queuedWriteText != ""
 ```
 
-When:
-
-```text
-writing = true
-```
-
-watcher-triggered reloads are ignored:
+While the pipeline is active, watcher events are ignored and debounced reloads are suppressed before calling `FileView.reload()`:
 
 ```text
 write
@@ -2718,7 +2739,9 @@ the service:
 
 ```text
 writing = false
+writePending = false
 writeText = ""
+writeFailed = false
 ```
 
 Then it checks:
@@ -2733,14 +2756,17 @@ If another state is queued:
 queued state exists
        │
        ▼
-start another write
+start another write (checkpoint still pending)
 ```
 
-otherwise:
+otherwise, only when `completeSaveWhenIdle` (set by an explicit `save()` while dirty) is still set — any mutation after `save()` cancels it:
 
 ```text
-dirty = false
+baseline = current document
+clearHistory()
 ```
+
+Autosave writes always stop after clearing the pipeline flags; they never touch baseline/history. A same-content `save()` therefore never queues a redundant write — it checkpoints synchronously instead (see 6.21), because a same-content `FileView.setText` may never emit `onSaved`.
 
 ---
 
@@ -2764,6 +2790,8 @@ dirty = true
 saveError
 ```
 
+The failed write's stale text is discarded (`writeText = ""`, `queuedWriteText = ""`), the pending save checkpoint is cancelled, `writeFailed` is set, the pipeline flags are cleared, and `saveError` is emitted. The document and its history stay intact (still dirty), so nothing is lost in memory.
+
 The older state being written never overwrites a newer queued state.
 
 A later explicit:
@@ -2772,7 +2800,7 @@ A later explicit:
 Config.save()
 ```
 
-can retry the operation.
+serializes the current in-memory document again — with `writeFailed` set it forces a rewrite instead of a sync checkpoint — and can retry the operation.
 
 ---
 
@@ -2864,28 +2892,32 @@ The main lifecycle is:
                          │ load
                          ▼
                   ┌──────────────┐
-                  │    ready     │
+                  │ clean (ready)│  document == baseline, history empty
                   └──────┬───────┘
-                         │ set/update/remove
+                         │ set/update/remove/undo/redo/revert/external
                          ▼
                   ┌──────────────┐
-                  │    dirty     │
+                  │    dirty     │  document != baseline, autosave
+                  │              │  write queued/in flight, baseline stays
                   └──────┬───────┘
-                         │ save
+                         │ save()
                          ▼
-                  ┌──────────────┐
-                  │   writing    │
-                  └──────┬───────┘
-                         │
-                 ┌───────┴───────┐
-                 │               │
-              success          failure
-                 │               │
+              ┌─────────────────────┐
+              │ pipeline active?    │
+              └──┬───────────────┬──┘
+                yes              no (disk matches,
+                 │               writeFailed? no)
                  ▼               ▼
-              clean           dirty/error
+         checkpoint-when-   baseline = current
+         idle (onSaved)     + clearHistory()
+                 │          sync, no IO
+                 ▼
+              clean
 ```
 
-Default-file properties (`Config.ready`, `Config.writing`, `Config.dirty`, `Config.revision`) are shortcuts for the `homeConfig` entry. Per-file functions (`readyFor()`, `writingFor()`, `dirtyFor()`, `revisionFor()`) observe any registered file.
+`save()` while `writeFailed` forces a rewrite first. `revert()` restores the baseline in one commit and wipes history. Explicit `reload()` sets baseline = disk and wipes history.
+
+Default-file properties (`Config.isReady`, `Config.isWriting`, `Config.isDirty`, `Config.revision`) are shortcuts for the `homeConfig` entry. Per-file functions (`isReadyFor()`, `isWritingFor()`, `isDirtyFor()`, `revisionFor()`) observe any registered file.
 
 ---
 
@@ -3333,7 +3365,21 @@ A normal runtime configuration change looks like:
                     onSaved
                         │
                         ▼
-                  dirty = false
+            pipeline flags cleared
+            (baseline/history untouched;
+             dirty stays true until save())
+```
+
+Checkpoint (`save()`):
+
+```text
+dirty + pipeline active → completeSaveWhenIdle,
+    baseline/history reset in onSaved
+dirty + idle + writeFailed → forced rewrite,
+    checkpoint in onSaved
+dirty + idle + disk matches → baseline = current
+    + clearHistory(), sync, no IO
+clean → wipe leftover history if any, no IO
 ```
 
 An external change instead follows:
@@ -3357,13 +3403,14 @@ JSON parse
 document comparison
     │
     ▼
-document replacement
+document replacement (undoable externalReload entry,
+    baseline stays, isDirty = true)
     │
     ▼
 revision++
     │
     ▼
-documentUpdated
+documentUpdated + externalReload
     │
     ▼
 QML bindings update
@@ -3617,13 +3664,13 @@ depending on the intended operation.
 Instead of assigning the read-only facade property:
 
 ```qml
-Config.debugLogging = false
+Config.isDebugLogging = false
 ```
 
 use:
 
 ```qml
-ConfigStore.debugLogging = false
+ConfigStore.isDebugLogging = false
 ```
 
 ---
@@ -3697,15 +3744,15 @@ Config
 service / UI
 
 
-WRITE
+WRITE (autosave; baseline untouched)
 
 service / UI
  ↓
-Config.set/update/remove
+Config.set/update/remove/undo/redo/revert
  ↓
-document
+document (revision++, documentUpdated)
  ↓
-dirty
+isDirty = (document != baseline)
  ↓
 save queue
  ↓
@@ -3713,10 +3760,18 @@ FileView
  ↓
 atomic write
  ↓
-filesystem
+filesystem (onSaved clears pipeline flags only)
 
 
-EXTERNAL CHANGE
+CHECKPOINT (save)
+
+save() → baseline = current + clearHistory()
+    (sync when idle, deferred to onSaved while
+     writes are in flight; forced rewrite when
+     writeFailed)
+
+
+EXTERNAL CHANGE (undoable)
 
 filesystem
  ↓
@@ -3728,13 +3783,14 @@ reload
  ↓
 JSON
  ↓
-document
+document + externalReload history entry
+    (baseline stays, isDirty = true)
  ↓
 revision++
  ↓
-documentUpdated
+documentUpdated + externalReload
  ↓
-reactive QML updates
+reactive QML updates (undo() restores + autosaves)
 
 
 PATH REGISTRY

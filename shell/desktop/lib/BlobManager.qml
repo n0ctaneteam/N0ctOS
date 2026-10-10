@@ -8,8 +8,7 @@ Singleton {
     id: root
 
     property list<string> configPaths: [
-        Quickshell.shellPath("config.json"),
-        Quickshell.statePath("config.json")
+        Quickshell.shellPath("config.json")
     ]
 
     property var blobs: ({

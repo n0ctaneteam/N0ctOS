@@ -18,14 +18,14 @@ Singleton {
      *
      * Animations exclusively uses homeConfig.
      */
-    readonly property bool ready:
-        Config.ready
+    readonly property bool isReady:
+        Config.isReady
 
-    readonly property bool writing:
-        Config.writing
+    readonly property bool isWriting:
+        Config.isWriting
 
-    readonly property bool dirty:
-        Config.dirty
+    readonly property bool isDirty:
+        Config.isDirty
 
     readonly property int revision:
         Config.revision
@@ -272,9 +272,9 @@ Singleton {
             Config
 
 
-        function onReadyChanged() {
+        function onIsReadyChanged() {
             if (
-                Config.ready
+                Config.isReady
             ) {
                 root.ensureDefaults()
             }
@@ -284,7 +284,7 @@ Singleton {
 
     Component.onCompleted: {
         if (
-            Config.ready
+            Config.isReady
         ) {
             root.ensureDefaults()
         }
@@ -298,7 +298,7 @@ Singleton {
      * Existing profiles are never overwritten.
      */
     function ensureDefaults() {
-        if (!Config.ready)
+        if (!Config.isReady)
             return false
 
 
@@ -1174,7 +1174,7 @@ Singleton {
             selectedScope !== "override"
         ) {
             if (
-                root.ready
+                root.isReady
             ) {
                 root.set(
                     normalizedPath,
@@ -2001,13 +2001,13 @@ Singleton {
     function getStatus() {
         return {
             ready:
-                root.ready,
+                root.isReady,
 
             writing:
-                root.writing,
+                root.isWriting,
 
             dirty:
-                root.dirty,
+                root.isDirty,
 
             revision:
                 root.revision,

@@ -281,7 +281,7 @@ Singleton {
         Config.revision
 
     on_ObservedConfigRevisionChanged: {
-        if (!Config.ready)
+        if (!Config.isReady)
             return
 
         root._syncConfig()
@@ -500,7 +500,7 @@ Singleton {
     // ============================================================
 
     function _syncConfig() {
-        if (!Config.ready)
+        if (!Config.isReady)
             return
 
         const raw =
@@ -629,7 +629,7 @@ Singleton {
     }
 
     function _writeConfig(next) {
-        if (!Config.ready)
+        if (!Config.isReady)
             return false
 
         const currentRaw =

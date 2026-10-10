@@ -7,7 +7,7 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    property list<string> searchPaths: [Quickshell.shellPath("desktop/modules")]
+    property list<string> searchPaths: [Quickshell.shellPath("desktop/modules"), "/home/n0ctanedev/.config/N0ctOS/plugins/modules"]
     readonly property var registry: _registry
     readonly property int moduleCount: Object.keys(_registry).length
 

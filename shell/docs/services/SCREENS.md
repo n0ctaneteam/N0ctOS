@@ -103,7 +103,7 @@ import qs.services
 
 | How to read | What does it do |
 | ----------- | --------------- |
-| `Screens.ready` | `Config.ready`. `false` until configuration is loaded. |
+| `Screens.ready` | `Config.isReady`. `false` until configuration is loaded. |
 | `Screens.names` | Remembered priority order, copy of `_screenNames`. Disconnected names are kept. |
 | `Screens.screens` | Live `Quickshell.screens` array of `ShellScreen` objects. |
 | `Screens.connectedNames` | Names of currently connected screens, copy of `_connectedNames`. |
@@ -503,9 +503,9 @@ The service only stores order:
 
 It does not store per-screen brightness, scale, position, wallpaper, or panel placement. Geometry comes from the live `ShellScreen` object, not from `Config`.
 
-### Gated on `Config.ready`
+### Gated on `Config.isReady`
 
-`syncFromConfig()`, `saveNames()`, and `refresh()` all return early when `Config.ready` is `false`. Early `Quickshell.screens` changes before config load do not create persisted order until `ready` fires.
+`syncFromConfig()`, `saveNames()`, and `refresh()` all return early when `Config.isReady` is `false`. Early `Quickshell.screens` changes before config load do not create persisted order until `isReady` fires.
 
 ---
 
@@ -886,7 +886,7 @@ It then compares element by element against `_screenNames`. If nothing changed i
 `refresh()` is the single topology ingest:
 
 ```text
-guard Config.ready and _refreshing
+guard Config.isReady and _refreshing
         │
         ▼
 index Quickshell.screens by String(screen.name)

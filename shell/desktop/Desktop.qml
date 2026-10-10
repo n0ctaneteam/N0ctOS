@@ -4,6 +4,7 @@ import Quickshell.Wayland
 
 import qs.desktop.components
 import qs.core.lib
+import qs.services
 
 Item {
     id: root
@@ -14,15 +15,15 @@ Item {
 
     WidgetLayer {
         // isDebug:true
-        editMode: true
+        // editMode: true
         _screen: root.screen
         WlrLayershell.layer:
             WlrLayer.Background
-    } 
+    }
 
     // NotiTest{}
     // TrayTest{}
-    
+
     ScreenFrame {
         id: frame
 
@@ -33,7 +34,7 @@ Item {
         borderWidth: 2
         borderColor: "#2acfff"
         blobAnimationDuration: 300
-        round: 30
+        cut: 30
 
         shadows: ({
             intensity: 30,
