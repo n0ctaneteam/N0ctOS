@@ -177,24 +177,33 @@ check_updates() {
     updates_found=1
   fi
 
-  # Check patches
+  # Check patches - use n0ct-patch --check exit code (0=clean, 1=pending, 2=error)
   if [[ -x "$N0CTOS_ROOT/bin/n0ct-patch" ]]; then
-    local check_output
-    check_output=$("$N0CTOS_ROOT/bin/n0ct-patch" --check 2>&1) || true
-    if echo "$check_output" | grep -q "Pending patches"; then
-      info "Patches: pending patches found"
-      updates_found=1
-    elif echo "$check_output" | grep -q "No pending patches"; then
-      info "Patches: up to date"
-    else
-      info "Patches: $check_output"
-    fi
+    local patch_exit=0
+    "$N0CTOS_ROOT/bin/n0ct-patch" --check >/dev/null 2>&1 || patch_exit=$?
+    case $patch_exit in
+      0)
+        info "Patches: up to date"
+        ;;
+      1)
+        info "Patches: pending patches found"
+        updates_found=1
+        ;;
+      2)
+        warn "Patches: error checking patches"
+        updates_found=1
+        ;;
+      *)
+        warn "Patches: unknown exit code $patch_exit"
+        updates_found=1
+        ;;
+    esac
   fi
 
-  # Check system packages
+  # Check system packages (non-destructive list only)
   if command -v n0ct-pkg >/dev/null; then
     local pkg_updates
-    pkg_updates=$(n0ct-pkg update 2>&1 | grep -c "upgradable" || true)
+    pkg_updates=$(n0ct-pkg list -un 2>/dev/null | grep -c "^" || true)
     if (( pkg_updates > 0 )); then
       info "Packages: $pkg_updates upgradable package(s)"
       updates_found=1

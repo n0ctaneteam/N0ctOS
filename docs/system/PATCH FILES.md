@@ -44,21 +44,23 @@ per-file groups) is defined in `PATCHING.md` §6.
 
 ```yaml
 meta:
-  version: "1.2.0"        # required — the version this patch brings the system TO
+  scope: "system"         # required — "system" or "local"
   name: "Aurora"          # optional short label
   summary: "Adds redis cache layer and rotates API keys"
+  register: true          # optional, default true — record in applied file
   authors:
     - name: "Jane"
       email: "jane@example.com"
     - name: "Sam"         # email optional
 ```
 
-| Field | Required | Meaning |
-|---|---|---|
-| `version` | yes | Bookkeeping identity; missing → immediate failure |
-| `name` | no | Short label, shown in logs |
-| `summary` | no | One-line description, shown in logs |
-| `authors` | no | Informational only |
+| Field | Required | Default | Meaning |
+|---|---|---|---|
+| `scope` | yes | — | `"system"` or `"local"` — determines which applied file is used |
+| `name` | no | — | Short label, shown in logs |
+| `summary` | no | — | One-line description, shown in logs |
+| `register` | no | `true` | Whether to record this patch in the applied file after success |
+| `authors` | no | — | Informational only |
 
 The runner never compares versions — selection is by filename (see
 `PATCHING.md` §4). There is no `requires:` / `from_version` gating.
@@ -143,7 +145,7 @@ file op`).
 | Field | Default | Meaning |
 |---|---|---|
 | `content` | `""` | File contents |
-| `overwrite` | `false` | `true` replaces an existing file; `false` + existing file = abort (dry-run prints SKIP) |
+| `overwrite` | `false` | `true` replaces an existing file; `false` + existing file = **skips** (logs `[create] path — EXISTS, overwrite=false → SKIP`) |
 | `mode` | unset | Octal mode string, e.g. `"0644"` |
 
 Parent directories are created automatically.
@@ -175,8 +177,7 @@ Already-gone + `missing_ok: true` (the default) logs a skip. Missing +
 | `content` | (required) | Text to append |
 | `newline_before` | `true` | Prepend `\n` if the file doesn't end with one |
 
-Target must exist (else abort; dry-run prints `would ABORT`).
-Only the first line is previewed in dry-run.
+Target must exist (else **skips** with a log message; dry-run prints `→ real run would ABORT` but continues). Only the first line is previewed in dry-run.
 
 ### `replace`
 
@@ -328,13 +329,14 @@ backreferences; not multi-line; slot never optional.
 Anything below aborts immediately with `FAILED:` on stderr, exit 1 —
 in batch mode, earlier files stay recorded (§11 of `PATCHING.md`):
 
-missing/invalid `meta.version` · unreadable YAML/file · bad pattern
-(0/2 slots, unknown slot body, double-space empty token) · `replace`
-with zero matches or missing target · `create` on existing without
-`overwrite` · `delete` on missing with `missing_ok: false` ·
-`append` on missing target · unknown `op` · non-zero exit or timeout
-of any command/package step · bad record file or patches dir ·
-running a real (non-`--dry-run`) apply without root (see §11).
+missing/invalid `meta.scope` · **schema validation error** · unreadable
+YAML/file · bad pattern (0/2 slots, unknown slot body, double-space
+empty token) · `replace` with zero matches or missing target · `create`
+on existing without `overwrite` → **skips** · `delete` on missing with
+`missing_ok: false` → aborts · `append` on missing target → **skips** ·
+unknown `op` · non-zero exit or timeout of any command/package step ·
+bad record file or patches dir · running a real (non-`--dry-run`)
+apply without root (see §11).
 
 `--dry-run` softens two of these into previews so one invocation shows
 everything: missing `append`/`replace` targets and zero-match replaces
@@ -372,8 +374,12 @@ n0ct-patch [patch.yaml...] [-n] [-c] [-m] [-a] [-p DIR] [-d DIR] [-s FILE] [-l F
 - **Default behavior**: running `n0ct-patch` with no arguments is equivalent to `n0ct-patch --apply-missing`.
 - `--no-root-check`: testing-only hatch for real runs without root
   (used by `examples/verify.sh`, which only touches the repo + `/tmp`).
-- Exit `0` ok / nothing-to-do · `1` `FAILED:` · `2` CLI misuse
-  (e.g. patch file combined with a batch flag).
+- Exit codes:
+  - `0` — clean (no errors, no pending in check mode)
+  - `1` — pending patches (check mode) or any `FAILED:`
+  - `2` — CLI misuse / schema validation errors
+  - `3` — usage error (invalid args)
+  - `130` — `Ctrl+C` (child group killed, partial batch stays as-is)
 
 ---
 

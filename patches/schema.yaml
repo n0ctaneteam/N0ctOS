@@ -50,7 +50,7 @@ definitions:
         type: boolean
         title: "Register"
         description: "Whether to record this patch in the applied-file after success. Explicit-file mode never registers regardless."
-        default: false
+        default: true
         examples: [true, false]
       authors:
         title: "Authors"

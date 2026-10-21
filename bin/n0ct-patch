@@ -37,6 +37,273 @@ except ImportError:
     jsonschema = None
 
 
+# ---------------------------------------------------------------------------
+# ANSI color helpers
+# ---------------------------------------------------------------------------
+
+RED = "\x1b[31;1m"
+GREEN = "\x1b[32;1m"
+YELLOW = "\x1b[33;1m"
+BLUE = "\x1b[34;1m"
+CYAN = "\x1b[36;1m"
+DIM = "\x1b[2m"
+BOLD = "\x1b[1m"
+RESET = "\x1b[0m"
+
+
+def _color(text: str, color: str) -> str:
+    return f"{color}{text}{RESET}"
+
+
+def _dim(text: str) -> str:
+    return f"{DIM}{text}{RESET}"
+
+
+def _bold(text: str) -> str:
+    return f"{BOLD}{text}{RESET}"
+
+
+def _red(text: str) -> str:
+    return _color(text, RED)
+
+
+def _green(text: str) -> str:
+    return _color(text, GREEN)
+
+
+def _yellow(text: str) -> str:
+    return _color(text, YELLOW)
+
+
+def _cyan(text: str) -> str:
+    return _color(text, CYAN)
+
+
+def _color(text: str, color: str) -> str:
+    return f"{color}{text}{RESET}"
+
+
+def _dim(text: str) -> str:
+    return f"{DIM}{text}{RESET}"
+
+
+def _bold(text: str) -> str:
+    return f"{BOLD}{text}{RESET}"
+
+
+def _red(text: str) -> str:
+    return _color(text, RED)
+
+
+def _green(text: str) -> str:
+    return _color(text, GREEN)
+
+
+def _yellow(text: str) -> str:
+    return _color(text, YELLOW)
+
+
+def _cyan(text: str) -> str:
+    return _color(text, CYAN)
+
+
+# ---------------------------------------------------------------------------
+# YAML line map (for error context)
+# ---------------------------------------------------------------------------
+
+
+def _yaml_line_map(text: str) -> dict:
+    """Map YAML paths to 1-based line numbers using yaml.compose()."""
+    try:
+        node = yaml.compose(text)
+    except yaml.YAMLError:
+        return {}
+
+    lines: dict[tuple, int] = {}
+
+    def walk(node, path):
+        if isinstance(node, yaml.MappingNode):
+            for k, v in node.value:
+                p = path + (k.value,)
+                lines[p] = k.start_mark.line + 1
+                walk(v, p)
+        elif isinstance(node, yaml.SequenceNode):
+            for i, item in enumerate(node.value):
+                p = path + (i,)
+                lines[p] = item.start_mark.line + 1
+                walk(item, p)
+        else:
+            lines[path] = node.start_mark.line + 1
+
+    walk(node, ())
+    return lines
+
+
+def _build_error_context(text: str, line_map: dict, line: int, column: int = 0) -> str:
+    """Build a colored context block showing +/-2 lines around the error line."""
+    lines = text.splitlines()
+    total = len(lines)
+    # Show +/-2 lines around the error (5 lines total)
+    start = max(0, line - 3)
+    end = min(total, line + 2)
+
+    out_lines = []
+    for i in range(start, end):
+        num = i + 1
+        prefix = f"{_dim(f'{num:4d}')} | "
+        line_text = lines[i]
+        if num == line:
+            prefix = f"{_red(f'{num:4d}')} | "
+            out_lines.append(f"{prefix}{line_text}")
+            if column > 0:
+                caret = " " * (4 + 3 + column - 1) + _red("^")
+                out_lines.append(f"{_dim('     ')} | {caret}")
+        else:
+            out_lines.append(f"{prefix}{line_text}")
+
+    return "\n".join(out_lines)
+
+
+def _locate_error(text: str, exc) -> tuple[int, int, str]:
+    """Determine error location (line, column, path_label) from exception."""
+    line_map = _yaml_line_map(text)
+
+    # YAML syntax error
+    if isinstance(exc, yaml.YAMLError):
+        if hasattr(exc, "problem_mark"):
+            mark = exc.problem_mark
+            line = mark.line + 1
+            col = mark.column + 1
+            return line, col, f"line {line}, column {col}"
+
+    # jsonschema validation error
+    if jsonschema and isinstance(exc, jsonschema.ValidationError):
+        best = exc
+        while best.context:
+            best = best.context[0]
+        path = tuple(best.absolute_path)
+        line_info = line_map.get(path)
+        if isinstance(line_info, tuple):
+            return line_info
+        elif isinstance(line_info, int):
+            return (line_info, 0, "unknown")
+        return (1, 1, "unknown")
+
+    # Manual meta.scope / meta.register errors
+    if "meta.scope" in str(exc) or "meta.scope" in str(exc.args[0] if exc.args else ""):
+        line_info = line_map.get(("meta", "scope"))
+        if isinstance(line_info, int):
+            return (line_info, 0, "meta.scope")
+        return line_info if isinstance(line_info, tuple) else (1, 1, "meta.scope")
+    if "meta.register" in str(exc) or "meta.register" in str(exc.args[0] if exc.args else ""):
+        line_info = line_map.get(("meta", "register"))
+        if isinstance(line_info, int):
+            return (line_info, 0, "meta.register")
+        return line_info if isinstance(line_info, tuple) else (1, 1, "meta.register")
+
+    # Fallback
+    return 1, 0, "unknown"
+
+
+def _report_file_error(patch_path: Path, exc, validate_mode: bool = False):
+    """Format and print an error for a single patch file with context."""
+    try:
+        text = patch_path.read_text()
+    except OSError:
+        text = ""
+
+    line, col, loc = _locate_error(text, exc)
+
+    # Build the error message
+    if isinstance(exc, yaml.YAMLError):
+        msg = str(exc)
+    elif jsonschema and isinstance(exc, jsonschema.ValidationError):
+        best = exc
+        while best.context:
+            best = best.context[0]
+        msg = f"schema validation failed: {best.message} (at {' -> '.join(map(str, best.absolute_path))})"
+    elif isinstance(exc, RuntimeError):
+        msg = str(exc)
+    else:
+        msg = str(exc)
+
+    # Print the error block
+    print(f"\n  {_red('✗')} {_bold(patch_path.name)}")
+    print(f"    {_red(msg)}")
+    if loc != "unknown":
+        print(f"    {_dim(f'at {loc}')}")
+
+    # Print context (±2 lines = 5 lines total)
+    if text:
+        context = _build_error_context(text, _yaml_line_map(text), line, 0)
+        print(context)
+
+    # For validation mode, also show file-level nomenclature warning
+    if validate_mode:
+        ok, msg = _check_nomenclature(patch_path.name, True)
+        if not ok:
+            print(f"    {_yellow('warning:')} {msg}")
+
+
+def _check_nomenclature(filename: str, validate_mode: bool):
+    """Check patch filename against nomenclature. Returns (is_valid, message)."""
+    if BRANCH_PATCH_REGEX.match(filename):
+        return True, ""
+    if VERSION_PATCH_REGEX.match(filename):
+        return True, ""
+    msg = (f"filename '{filename}' does not match nomenclature: "
+           f"expected '00-<BRANCH>.yaml' or '<major>.<minor>[.<type>][-<serial>][-<name>].yaml' "
+           f"(type ∈ {{a,b,r}}, name snake_case)")
+    if validate_mode:
+        return False, msg
+    print(f"  [warn] {msg}", file=sys.stderr)
+    return True, msg
+
+
+def _resolve_patches_dir(patches_dir: Path, validate_mode: bool):
+    """Resolve patches directory, checking existence."""
+    if not patches_dir.is_dir():
+        raise RuntimeError(f"patches dir not found: {patches_dir}")
+    return patches_dir
+
+
+def run_validate(patches_dir: Path, explicit_files: list):
+    """Validate patches. Returns 0 if all valid, 1 if any error."""
+    patches_dir = _resolve_patches_dir(patches_dir, True)
+    errors = 0
+    warnings = 0
+
+    if explicit_files:
+        files = [Path(f) for f in explicit_files]
+    else:
+        # In validation mode, check all patches but respect .patchignore
+        ignore_patterns = load_patchignore(patches_dir)
+        files = sorted(patches_dir.glob("*.yaml"), key=lambda p: p.name)
+        files = [f for f in files if not is_patch_ignored(f.name, ignore_patterns)]
+
+    for f in files:
+        try:
+            patch = load_patch(f)
+            # Schema validation
+            _validate_schema(patch, patches_dir, f.name, True)
+            # Nomenclature check
+            ok, msg = _check_nomenclature(f.name, True)
+            if not ok:
+                _report_file_error(f, RuntimeError(msg), True)
+                errors += 1
+            else:
+                print(f"OK {f.name}")
+        except Exception as e:
+            _report_file_error(f, e, True)
+            errors += 1
+
+    if errors:
+        print(f"\nValidation failed: {errors} error(s), {warnings} warning(s)")
+        return 1
+    print(f"\nAll {len(files)} patch(es) valid.")
+    return 0
+
+
 def _ensure_sudo():
     """Ensure we're running as root, prompting for sudo if needed.
 
@@ -50,7 +317,8 @@ def _ensure_sudo():
     try:
         subprocess.run(["sudo", "-n", "true"], check=True, capture_output=True)
         # Have passwordless sudo, re-execute with sudo
-        os.execvp("sudo", ["sudo", sys.argv[0]] + sys.argv[1:])
+        script_path = Path(sys.argv[0]).resolve()
+        os.execvp("sudo", ["sudo", str(script_path)] + sys.argv[1:])
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
 
@@ -62,8 +330,9 @@ def _ensure_sudo():
         print("n0ct-patch: sudo authentication failed", file=sys.stderr)
         sys.exit(1)
 
-    # Re-execute with sudo
-    os.execvp("sudo", ["sudo", sys.argv[0]] + sys.argv[1:])
+    # Re-execute with sudo using absolute path
+    script_path = Path(sys.argv[0]).resolve()
+    os.execvp("sudo", ["sudo", str(script_path)] + sys.argv[1:])
 
 
 # Re-execute with sudo
@@ -83,6 +352,7 @@ VERSION_PATCH_REGEX = re.compile(
 )
 
 _jsonschema_warned = False
+_schema_validator_cache: dict[str, tuple] = {}
 
 
 def _load_schema(patches_dir: Path):
@@ -96,6 +366,22 @@ def _load_schema(patches_dir: Path):
     if schema_path.exists():
         return schema_path
     return None
+
+
+def _get_schema_validator(schema_path: Path):
+    """Get or create a compiled jsonschema validator for the schema file."""
+    cache_key = str(schema_path)
+    if cache_key in _schema_validator_cache:
+        return _schema_validator_cache[cache_key]
+
+    try:
+        schema = yaml.safe_load(schema_path.read_text())
+    except Exception as e:
+        raise RuntimeError(f"failed to load schema {schema_path}: {e}")
+
+    validator = jsonschema.validators.validator_for(schema)(schema)
+    _schema_validator_cache[cache_key] = (validator, schema)
+    return validator, schema
 
 
 def _validate_schema(patch: dict, patches_dir: Path, filename: str, validate_mode: bool):
@@ -119,7 +405,8 @@ def _validate_schema(patch: dict, patches_dir: Path, filename: str, validate_mod
         return
 
     try:
-        jsonschema.validate(instance=patch, schema=schema)
+        validator, _ = _get_schema_validator(schema_path)
+        validator.validate(patch)
     except jsonschema.ValidationError as e:
         # Use best match for clearer error
         best = e
@@ -173,12 +460,12 @@ def run_validate(patches_dir: Path, explicit_files: list):
             # Nomenclature check
             ok, msg = _check_nomenclature(f.name, True)
             if not ok:
-                print(f"ERROR {f.name}: {msg}")
+                _report_file_error(f, RuntimeError(msg), True)
                 errors += 1
             else:
                 print(f"OK {f.name}")
         except Exception as e:
-            print(f"ERROR {f.name}: {e}")
+            _report_file_error(f, e, True)
             errors += 1
 
     if errors:
@@ -511,7 +798,9 @@ def op_create(spec: dict, dry_run: bool):
         if dry_run:
             print(f"[create] {p} — EXISTS, overwrite=false → SKIP")
             return
-        raise RuntimeError(f"{p} exists and overwrite=false")
+        # Skip instead of failing when overwrite=false and file exists
+        print(f"[create] {p} — EXISTS, overwrite=false → SKIP")
+        return
 
     if dry_run:
         verb = "OVERWRITE" if p.exists() else "CREATE"
@@ -552,9 +841,10 @@ def op_append(spec: dict, dry_run: bool):
 
     if not p.exists():
         if dry_run:
-            print(f"[append] {p} — MISSING → real run would ABORT")
+            print(f"[append] {p} — MISSING → SKIP")
             return
-        raise RuntimeError(f"{p} does not exist (append target)")
+        print(f"[append] {p} — MISSING → SKIP")
+        return
 
     existing = p.read_text()
     sep = ""
@@ -740,6 +1030,37 @@ def run_section(name: str, items, runner, dry_run: bool):
         runner(item, dry_run)
 
 
+# ---------------------------------------------------------------------------
+# Patch cache (to avoid re-loading and re-validating patches)
+# ---------------------------------------------------------------------------
+
+_patch_cache: dict[str, dict] = {}
+
+
+def _get_cached_patch(patch_path: Path, validate_mode: bool):
+    """Load patch with caching to avoid re-reading and re-validating."""
+    key = (str(patch_path), validate_mode)
+    if key in _patch_cache:
+        return _patch_cache[key]
+    patch = load_patch(patch_path, validate_mode)
+    _patch_cache[key] = patch
+    return patch
+
+
+def _clear_patch_cache():
+    """Clear the patch cache (useful for testing)."""
+    global _patch_cache
+    _patch_cache.clear()
+
+
+def _safe_load_patch(patch_path: Path, validate_mode: bool = False):
+    """Load patch without raising exceptions, returns None on error."""
+    try:
+        return load_patch(patch_path, validate_mode)
+    except Exception:
+        return None
+
+
 def load_patch(patch_path: Path, validate_mode: bool = False):
     """Load + validate one patch YAML. Returns the patch dict."""
     patch = yaml.safe_load(Path(patch_path).read_text())
@@ -752,8 +1073,8 @@ def load_patch(patch_path: Path, validate_mode: bool = False):
             f"{patch_path}: meta.scope must be 'system' or 'local', got {scope!r}"
         )
 
-    # Validate register field (optional, defaults to false)
-    register = meta.get("register", False)
+    # Validate register field (optional, defaults to true)
+    register = meta.get("register", True)
     if not isinstance(register, bool):
         raise RuntimeError(
             f"{patch_path}: meta.register must be boolean (true/false), got {register!r}"
@@ -1002,52 +1323,65 @@ def run_check(patches_dir: Path, applied_system_file: Path, applied_local_file: 
     applied_local = _load_applied_local(applied_local_file)
 
     print(f"patches dir: {patches_dir}")
-    print(f"  system: {len([p for p in all_paths if load_patch(p, True).get('meta', {}).get('scope') == 'system'])} total, {len(selected_system)} pending")
-    print(f"  local:  {len([p for p in all_paths if load_patch(p, True).get('meta', {}).get('scope') == 'local'])} total, {len(selected_local)} pending")
+    print(f"  system: {len([p for p in all_paths if _safe_load_patch(p, True).get('meta', {}).get('scope') == 'system'])} total, {len(selected_system)} pending")
+    print(f"  local:  {len([p for p in all_paths if _safe_load_patch(p, True).get('meta', {}).get('scope') == 'local'])} total, {len(selected_local)} pending")
     print(f"system applied file: {applied_system_file} ({len(applied_system)} applied)")
     print(f"local applied file:  {applied_local_file} ({len(applied_local)} applied)")
     if ignore_patterns:
         print(f"ignored: {', '.join(ignore_patterns)}")
 
     has_pending = False
+    errors = 0
 
     if selected_system:
         has_pending = True
         print("\nPending system patches:")
         for path in selected_system:
-            patch = load_patch(path, True)
-            meta = patch.get("meta") or {}
-            name = meta.get("name", "")
-            summary = meta.get("summary", "")
-            reg = meta.get("register", False)
-            line = f"  {path.name}"
-            if name:
-                line += f"  ({name}"
-            line += f", register={reg})"
-            if summary:
-                line += f" — {summary}"
-            print(line)
+            try:
+                patch = load_patch(path, True)
+                meta = patch.get("meta") or {}
+                name = meta.get("name", "")
+                summary = meta.get("summary", "")
+                reg = meta.get("register", False)
+                line = f"  {path.name}"
+                if name:
+                    line += f"  ({name}"
+                line += f", register={reg})"
+                if summary:
+                    line += f" — {summary}"
+                print(line)
+            except Exception as e:
+                _report_file_error(path, e, False)
+                errors += 1
 
     if selected_local:
         has_pending = True
         print("\nPending local patches:")
         for path in selected_local:
-            patch = load_patch(path, True)
-            meta = patch.get("meta") or {}
-            name = meta.get("name", "")
-            summary = meta.get("summary", "")
-            reg = meta.get("register", False)
-            line = f"  {path.name}"
-            if name:
-                line += f"  ({name}"
-            line += f", register={reg})"
-            if summary:
-                line += f" — {summary}"
-            print(line)
+            try:
+                patch = load_patch(path, True)
+                meta = patch.get("meta") or {}
+                name = meta.get("name", "")
+                summary = meta.get("summary", "")
+                reg = meta.get("register", False)
+                line = f"  {path.name}"
+                if name:
+                    line += f"  ({name}"
+                line += f", register={reg})"
+                if summary:
+                    line += f" — {summary}"
+                print(line)
+            except Exception as e:
+                _report_file_error(path, e, False)
+                errors += 1
 
     if not has_pending:
         print("No pending patches.")
         return 0
+
+    if errors:
+        print(f"\nErrors encountered: {errors}")
+        return 1
 
     return 1
 
@@ -1138,9 +1472,10 @@ def apply_batch(patches_dir: Path, applied_system_file: Path, applied_local_file
         run_section("commands", patch.get("commands") or [], run_command, dry_run)
         run_section("post", patch.get("post") or [], run_command, dry_run)
 
-        register = patch.get("meta", {}).get("register", False)
+        register = patch.get("meta", {}).get("register", True)
         if dry_run:
-            print(f"  [dry-run] would register {name} (system, register={register})")
+            if register:
+                print(f"  [dry-run] would register {name} (system, register={register})")
         elif register:
             if name in applied_system_set:
                 print(f"[register] {name} — already listed (system)")
@@ -1163,9 +1498,10 @@ def apply_batch(patches_dir: Path, applied_system_file: Path, applied_local_file
         run_section("commands", patch.get("commands") or [], run_command, dry_run)
         run_section("post", patch.get("post") or [], run_command, dry_run)
 
-        register = patch.get("meta", {}).get("register", False)
+        register = patch.get("meta", {}).get("register", True)
         if dry_run:
-            print(f"  [dry-run] would register {name} (local, register={register})")
+            if register:
+                print(f"  [dry-run] would register {name} (local, register={register})")
         elif register:
             if name in applied_local_set:
                 print(f"[register] {name} — already listed (local)")
@@ -1282,10 +1618,17 @@ Modes:
         print("\ninterrupted — nothing registered beyond last [register]",
               file=sys.stderr)
         sys.exit(130)
+    except KeyboardInterrupt:
+        print("\ninterrupted — nothing registered beyond last [register]",
+              file=sys.stderr)
+        sys.exit(130)
     except (RuntimeError, ValueError, OSError,
             subprocess.TimeoutExpired) as e:
         print(f"\nFAILED: {e}", file=sys.stderr)
         sys.exit(1)
+    except Exception as e:
+        print(f"\nFAILED: {e}", file=sys.stderr)
+        sys.exit(2)
 
 
 if __name__ == "__main__":

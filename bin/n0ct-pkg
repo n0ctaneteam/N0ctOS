@@ -8,57 +8,218 @@ AUR_HELPER="paru"
 RETRY_COUNT=2
 RETRY_DELAYS=(2 5)
 
-# ---- Helpers ----
-notify() { echo -e "\x1b[32;1;4m====== $* ======\x1b[0m"; }
-info()  { printf '  [info]  %s\n' "$*"; }
-warn()  { printf '\x1b[33;1m  [warn]  %s\x1b[0m\n' "$*" >&2; }
-die()   { printf '\x1b[31;1m  [error] %s\x1b[0m\n' "$*" >&2; exit 1; }
+# ---- Theme ----
+# Colors are only emitted when stdout is a terminal, so piped output stays
+# clean. NO_COLOR and --color/--no-color are honoured.
+COLOR_MODE=auto
+
+for arg in "$@"; do
+  case "$arg" in
+    --color)         COLOR_MODE=always ;;
+    --color=always)  COLOR_MODE=always ;;
+    --color=never)   COLOR_MODE=never ;;
+    --no-color)      COLOR_MODE=never ;;
+  esac
+done
+
+C_RESET='' C_BOLD='' C_DIM=''
+C_RED='' C_GREEN='' C_YELLOW='' C_BLUE='' C_MAGENTA='' C_CYAN='' C_GRAY=''
+
+setup_colors() {
+  local use=false
+
+  case "$COLOR_MODE" in
+    always)
+      use=true
+      ;;
+    never)
+      use=false
+      ;;
+    auto)
+      if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != "dumb" ]]; then
+        use=true
+      fi
+      ;;
+  esac
+
+  if [[ "$use" == "true" ]]; then
+    C_RESET=$'\033[0m'
+    C_BOLD=$'\033[1m'
+    C_DIM=$'\033[2m'
+    C_RED=$'\033[31m'
+    C_GREEN=$'\033[32m'
+    C_YELLOW=$'\033[33m'
+    C_BLUE=$'\033[34m'
+    C_MAGENTA=$'\033[35m'
+    C_CYAN=$'\033[36m'
+    C_GRAY=$'\033[90m'
+  fi
+}
+
+setup_colors
+
+# ---- Output helpers ----
+# Section heading: a cyan arrow with bold text.
+section() {
+  printf '\n  %s▸%s %s%s%s\n' "$C_CYAN" "$C_RESET" "$C_BOLD" "$*" "$C_RESET"
+}
+
+# Sub item inside a section.
+step() {
+  printf '    %s•%s %s\n' "$C_CYAN" "$C_RESET" "$*"
+}
+
+# Successful action.
+ok() {
+  printf '    %s✔%s %s\n' "$C_GREEN" "$C_RESET" "$*"
+}
+
+# Neutral information.
+info() {
+  printf '    %s·%s %s%s%s\n' "$C_GRAY" "$C_RESET" "$C_DIM" "$*" "$C_RESET"
+}
+
+# Command that would be executed (dry run).
+dry() {
+  printf '    %s»%s %sDRY RUN:%s %s%s%s\n' \
+    "$C_MAGENTA" "$C_RESET" "$C_BOLD" "$C_RESET" "$C_DIM" "$*" "$C_RESET"
+}
+
+# Aligned label row with a leading mark (used for the source groups).
+group_line() {
+  local mark="$1" color="$2" label="$3" value="$4"
+  printf '    %s%s%s %s%-16s%s %s\n' "$color" "$mark" "$C_RESET" "$C_BOLD" "$label" "$C_RESET" "$value"
+}
+
+# Show a command that would run (dry run), next to the group it belongs to.
+# scope: "root" prefixes sudo when not already root, "user" never does.
+dry_group() {
+  local label="$1" scope="$2"
+  shift 2
+  local -a cmd=("$@")
+  if [[ "$scope" == "root" && $EUID -ne 0 ]]; then
+    cmd=(sudo "${cmd[@]}")
+  fi
+  printf '    %s»%s %s%-16s%s %s%s%s\n' \
+    "$C_MAGENTA" "$C_RESET" "$C_BOLD" "$label" "$C_RESET" "$C_DIM" "${cmd[*]}" "$C_RESET"
+}
+
+# Colorize package lines like "extra/foo 1.2.3-1 (grp)" -> name cyan, rest dim.
+colorize_pkg_lines() {
+  if [[ -z "$C_CYAN" ]]; then
+    cat
+    return 0
+  fi
+  awk -v c="$C_CYAN" -v d="$C_DIM" -v r="$C_RESET" '
+    /^[^[:space:]]/ && NF {
+      name = $1
+      rest = substr($0, length(name) + 2)
+      printf "%s%s%s %s%s%s\n", c, name, r, d, rest, r
+      next
+    }
+    { print }
+  '
+}
+
+# Colorize "Key : value" blocks (pacman -Si output).
+colorize_fields() {
+  if [[ -z "$C_BOLD" ]]; then
+    cat
+    return 0
+  fi
+  awk -v b="$C_BOLD" -v c="$C_CYAN" -v r="$C_RESET" '
+    /^[^[:space:]][^:]*:/ {
+      idx = index($0, ":")
+      printf "%s%s%s%s\n", b, c, substr($0, 1, idx - 1), r substr($0, idx)
+      next
+    }
+    { print }
+  '
+}
+
+# Indent a block by 4 spaces (only when the output is a terminal, so piped
+# output stays byte identical).
+indent() {
+  if [[ -z "$C_RESET" ]]; then
+    cat
+    return 0
+  fi
+  sed 's/^/    /'
+}
+
+warn() {
+  printf '    %s⚠%s  %s%s%s\n' "$C_YELLOW" "$C_RESET" "$C_BOLD" "$*" "$C_RESET" >&2
+}
+
+die() {
+  printf '\n    %s✖ %s%s\n' "$C_RED$C_BOLD" "$*" "$C_RESET" >&2
+  exit 1
+}
 
 usage() {
-  cat <<'EOF'
-Usage: n0ct-pkg [options] <command> [packages...]
+  local c_reset="$C_RESET" c_bold="$C_BOLD" c_dim="$C_DIM" c_cyan="$C_CYAN"
 
-Commands:
-  add <pkgs...>       Install packages (auto-detect repo vs AUR)
-  remove <pkgs...>    Remove packages
-  update [pkgs...]    Update given packages, or the whole system if none given
-  refresh             Refresh package databases (pacman -Syy)
-  search <query>      Search both repos and AUR
-  info <pkg>          Show package info
-  list                List packages with filters (defaults to installed ones)
-  completions [shell] Install completions system-wide (bash/zsh/fish/sh)
+  # aligned rows: bold key on the left, dim description on the right
+  cmd_row() {
+    printf '  %s%-18s%s %s%s%s\n' "$c_bold" "$1" "$c_reset" "$c_dim" "$2" "$c_reset"
+  }
+  opt_row() {
+    printf '  %s%-18s%s %s%s%s\n' "$c_bold" "$1" "$c_reset" "$c_dim" "$2" "$c_reset"
+  }
+  printf '%sn0ct-pkg%s %s— package manager front-end for pacman + AUR%s\n' \
+    "$c_bold" "$c_reset" "$c_dim" "$c_reset"
 
-Global options:
-  -y, --yes           Auto-confirm (non-interactive)
-  -D, --dry-run       Print commands without executing
-  -n, --number        Number the output / print only a count
-  -h, --help          Show this help
+  printf '\n%s%sUSAGE%s\n' "$c_bold" "$c_cyan" "$c_reset"
+  printf '  %sn0ct-pkg%s %s[options]%s <command> [packages...]\n' \
+    "$c_bold" "$c_reset" "$c_bold" "$c_reset"
 
-Short options can be combined, in any order:
-  -iua  ==  -iau  ==  -i -u -a
+  printf '\n%s%sCOMMANDS%s\n' "$c_bold" "$c_cyan" "$c_reset"
+  cmd_row "add <pkgs...>"       "Install packages (auto-detect repo vs AUR)"
+  cmd_row "remove <pkgs...>"    "Remove packages"
+  cmd_row "update [pkgs...]"    "Update given packages, or everything"
+  cmd_row "refresh"             "Refresh package databases (pacman -Syy)"
+  cmd_row "search <query>"      "Search both repos and AUR"
+  cmd_row "info <pkg>"          "Show package info"
+  cmd_row "list"                "List packages with filters"
+  cmd_row "completions [shell]" "Install completions system-wide"
 
-Add options:
-  --only-repo         Install only official repo packages
-  --only-aur          Install only AUR packages (suppresses AUR warning)
-  --no-aur            Skip AUR entirely
+  printf '\n%s%sGLOBAL OPTIONS%s\n' "$c_bold" "$c_cyan" "$c_reset"
+  opt_row "-y, --yes"           "Auto-confirm (non-interactive)"
+  opt_row "-D, --dry-run"       "Print commands without executing"
+  opt_row "-n, --number"        "Number the output / print only a count"
+  opt_row "-F, --force"         "Reinstall even if up to date (add/update)"
+  opt_row "-h, --help"          "Show this help"
+  opt_row "--color"             "Force colors on (--no-color turns them off)"
 
-List filters:
-  -i, --installed     Installed packages (default when no other filter is given)
-  -p, --pacman        Only official repo packages (mutex with -a)
-  -a, --aur           Only AUR/foreign packages (mutex with -p)
-  -e, --explicit      Explicitly installed packages
-  -u, --upgradable    Packages with available updates
-  -d, --deps          Dependency packages
+  printf '\n%s%sADD OPTIONS%s\n' "$c_bold" "$c_cyan" "$c_reset"
+  opt_row "--only-repo"         "Install only official repo packages"
+  opt_row "--only-aur"          "Install only AUR packages"
+  opt_row "--no-aur"            "Skip AUR entirely"
 
-Numbering:
-  list -n             Print only the number of packages
-  list -in            Print "name index" per package, plus the total
-  search -n           Print only the number of matches
-  info -n             Print only "<pkg> <version>"
+  printf '\n%s%sLIST FILTERS%s\n' "$c_bold" "$c_cyan" "$c_reset"
+  opt_row "-i, --installed"     "Installed packages (default)"
+  opt_row "-p, --pacman"        "Only official repo packages"
+  opt_row "-a, --aur"           "Only AUR/foreign packages"
+  opt_row "-e, --explicit"      "Explicitly installed packages"
+  opt_row "-u, --upgradable"    "Packages with available updates"
+  opt_row "-d, --deps"          "Dependency packages"
+  opt_row "-l, --line"          "All packages on a single line"
 
-EOF
+  printf '\n%s%sNUMBERING%s\n' "$c_bold" "$c_cyan" "$c_reset"
+  opt_row "list -n"             "Print only the number of packages"
+  opt_row "list -in"            "Print \"name index\" per package, plus the total"
+  opt_row "search -n"           "Print only the number of matches"
+  opt_row "info -n"             "Print only \"<pkg> <version>\""
+
+  printf '\n%s%sNOTES%s\n' "$c_bold" "$c_cyan" "$c_reset"
+  printf '  %sShort options combine in any order:  -iua  ==  -iau  ==  -i -u -a%s\n' "$c_dim" "$c_reset"
+  printf '  %sadd/remove/update group packages by source, then run one command per%s\n' "$c_dim" "$c_reset"
+  printf '  %sgroup: pacman for the repo packages, paru for the AUR ones.%s\n' "$c_dim" "$c_reset"
+  printf '  %s--dry-run prints the same plan without touching anything.%s\n' "$c_dim" "$c_reset"
+
   exit 0
 }
+
 
 # ---- Flag registry ----
 # canonical-name:short-letter
@@ -72,6 +233,8 @@ FLAG_TABLE=(
   "explicit:e"
   "upgradable:u"
   "deps:d"
+  "line:l"
+  "force:F"
   "help:h"
 )
 
@@ -80,6 +243,8 @@ LONG_ONLY_FLAGS=(
   "only-repo"
   "only-aur"
   "no-aur"
+  "color"
+  "no-color"
 )
 
 declare -A SHORT_TO_NAME=()
@@ -105,12 +270,14 @@ NUMBER=false
 NO_AUR=false
 ONLY_REPO=false
 ONLY_AUR=false
+FORCE=false
 LIST_INSTALLED=false
 LIST_PACMAN=false
 LIST_AUR=false
 LIST_EXPLICIT=false
 LIST_UPGRADABLE=false
 LIST_DEPS=false
+LIST_LINE=false
 LIST_FILTER_GIVEN=false
 POSITIONAL=()
 
@@ -127,9 +294,13 @@ set_flag() {
     explicit)   LIST_EXPLICIT=true; LIST_FILTER_GIVEN=true ;;
     upgradable) LIST_UPGRADABLE=true; LIST_FILTER_GIVEN=true ;;
     deps)       LIST_DEPS=true; LIST_FILTER_GIVEN=true ;;
+    line)       LIST_LINE=true ;;
     only-repo)  ONLY_REPO=true ;;
     only-aur)   ONLY_AUR=true ;;
     no-aur)     NO_AUR=true ;;
+    color)      : ;;  # handled by the pre-scan in setup_colors
+    no-color)   : ;;
+    force)      FORCE=true ;;
     help)       usage ;;
     *)          die "Unknown flag: $1" ;;
   esac
@@ -226,7 +397,7 @@ run_with_retry() {
   local attempt=0
   while (( attempt < RETRY_COUNT )); do
     if [[ "$DRY_RUN" == "true" ]]; then
-      info "DRY RUN: ${cmd[*]}"
+      dry "${cmd[*]}"
       return 0
     fi
     if "${cmd[@]}"; then
@@ -234,7 +405,8 @@ run_with_retry() {
     fi
     attempt=$((attempt+1))
     if (( attempt < RETRY_COUNT )); then
-      warn "Command failed (attempt ${attempt}/${RETRY_COUNT}), retrying in ${RETRY_DELAYS[attempt-1]}s: ${cmd[*]}"
+      warn "Command failed (attempt ${attempt}/${RETRY_COUNT})," \
+           "retrying in ${RETRY_DELAYS[attempt-1]}s: ${cmd[*]}"
       sleep "${RETRY_DELAYS[attempt-1]}"
     fi
   done
@@ -259,9 +431,9 @@ run_as_root() {
 run_as_root_direct() {
   if [[ "$DRY_RUN" == "true" ]]; then
     if [[ $EUID -eq 0 ]]; then
-      info "DRY RUN: $*"
+      dry "$*"
     else
-      info "DRY RUN: sudo $*"
+      dry "sudo $*"
     fi
     return 0
   fi
@@ -286,11 +458,9 @@ run_as_user() {
 
 # Same as run_as_user but without retries — used for probes/queries where
 # a failure is an expected answer, not an error worth retrying.
+# Note: this one really runs even in dry-run mode, the source detection has to
+# stay accurate so the grouped plan is correct.
 run_as_user_direct() {
-  if [[ "$DRY_RUN" == "true" ]]; then
-    info "DRY RUN: $*"
-    return 0
-  fi
   if [[ $EUID -eq 0 ]]; then
     runuser -u "$(target_user)" -- "$@"
   else
@@ -301,7 +471,7 @@ run_as_user_direct() {
 # Query helpers: never die, honour --dry-run and keep stdout clean.
 query_output() {
   if [[ "$DRY_RUN" == "true" ]]; then
-    printf '  [info]  DRY RUN: %s\n' "$*" >&2
+    dry "$*" >&2
     return 0
   fi
   "$@" 2>/dev/null || true
@@ -309,15 +479,55 @@ query_output() {
 
 query_output_as_user() {
   if [[ "$DRY_RUN" == "true" ]]; then
-    printf '  [info]  DRY RUN: %s\n' "$*" >&2
+    dry "$*" >&2
     return 0
   fi
   run_as_user_direct "$@" 2>/dev/null || true
 }
 
 # ---- Package detection ----
+# The set of packages offered by the official repos is read once and cached,
+# so grouping a list of packages needs a single local query instead of one
+# `pacman -Si` per package.
+declare -A REPO_PKGS=()
+declare -A INSTALLED_PKGS=()
+REPO_PKGS_LOADED=false
+INSTALLED_PKGS_LOADED=false
+
+load_repo_pkgs() {
+  local pkg
+  if [[ "$REPO_PKGS_LOADED" == "true" ]]; then
+    return 0
+  fi
+  REPO_PKGS_LOADED=true
+  while IFS= read -r pkg; do
+    if [[ -n "$pkg" ]]; then
+      REPO_PKGS["$pkg"]=1
+    fi
+  done < <("$PACMAN" -Slq 2>/dev/null || true)
+}
+
+load_installed_pkgs() {
+  local pkg
+  if [[ "$INSTALLED_PKGS_LOADED" == "true" ]]; then
+    return 0
+  fi
+  INSTALLED_PKGS_LOADED=true
+  while IFS= read -r pkg; do
+    if [[ -n "$pkg" ]]; then
+      INSTALLED_PKGS["$pkg"]=1
+    fi
+  done < <("$PACMAN" -Qq 2>/dev/null || true)
+}
+
 pkg_in_repo() {
-  "$PACMAN" -Si "$1" >/dev/null 2>&1
+  load_repo_pkgs
+  [[ -n "${REPO_PKGS[$1]+set}" ]]
+}
+
+pkg_installed() {
+  load_installed_pkgs
+  [[ -n "${INSTALLED_PKGS[$1]+set}" ]]
 }
 
 pkg_in_aur() {
@@ -338,22 +548,132 @@ detect_pkg_source() {
   fi
 }
 
+# ---- Source grouping ----
+# Groups are filled by resolve_groups:
+#   RES_REPO     packages that come from the official repos
+#   RES_AUR      packages that come from the AUR
+#   RES_UNKNOWN  packages found in neither
+#
+# Resolution happens in tiers so that a long package list does not turn into
+# one network round trip per package:
+#   1. local repo list (`pacman -Slq`, cached)      -> repo
+#   2. one batched `paru -Si <rest>` per 200 pkgs  -> aur / repo / unknown
+RES_REPO=()
+RES_AUR=()
+RES_UNKNOWN=()
+
+# Results of the batched lookup
+declare -A BATCH_AUR=()
+declare -A BATCH_REPO=()
+
+BATCH_SIZE=200
+
+# One `paru -Si` call for a chunk of packages. paru prints the repository and
+# the name of every package it knows, so a single call classifies a whole
+# chunk instead of one call per package.
+lookup_batch_run() {
+  local repo name
+  while IFS=$'\t' read -r repo name; do
+    if [[ -z "$name" ]]; then
+      continue
+    fi
+    if [[ "$repo" == "aur" ]]; then
+      BATCH_AUR["$name"]=1
+    else
+      BATCH_REPO["$name"]=1
+    fi
+  done < <(run_as_user_direct "$AUR_HELPER" -Si "$@" 2>/dev/null \
+    | awk -F' : ' '/^Repository/{r=$2} /^Name/{print r"\t"$2}')
+}
+
+lookup_batch() {
+  local -a chunk=()
+  local pkg
+  for pkg in "$@"; do
+    chunk+=("$pkg")
+    if [[ ${#chunk[@]} -ge $BATCH_SIZE ]]; then
+      lookup_batch_run "${chunk[@]}"
+      chunk=()
+    fi
+  done
+  if [[ ${#chunk[@]} -gt 0 ]]; then
+    lookup_batch_run "${chunk[@]}"
+  fi
+}
+
+resolve_groups() {
+  local pkg
+  local -a rest=()
+
+  RES_REPO=()
+  RES_AUR=()
+  RES_UNKNOWN=()
+  BATCH_AUR=()
+  BATCH_REPO=()
+
+  # tier 1: everything a repo offers is known locally
+  for pkg in "$@"; do
+    if pkg_in_repo "$pkg"; then
+      RES_REPO+=("$pkg")
+    else
+      rest+=("$pkg")
+    fi
+  done
+
+  # tier 2: one batched lookup for whatever is left
+  if [[ ${#rest[@]} -gt 0 ]] && command -v "$AUR_HELPER" >/dev/null 2>&1; then
+    lookup_batch "${rest[@]}"
+    if [[ ${#BATCH_AUR[@]} -eq 0 && ${#BATCH_REPO[@]} -eq 0 ]]; then
+      warn "AUR lookup returned nothing (offline?) — ${#rest[@]} package(s) stay unresolved"
+    fi
+  fi
+
+  for pkg in "${rest[@]}"; do
+    if [[ -n "${BATCH_AUR[$pkg]+set}" ]]; then
+      RES_AUR+=("$pkg")
+    elif [[ -n "${BATCH_REPO[$pkg]+set}" ]]; then
+      RES_REPO+=("$pkg")
+    else
+      RES_UNKNOWN+=("$pkg")
+    fi
+  done
+}
+
+report_unknown() {
+  local pkg
+  for pkg in "${RES_UNKNOWN[@]}"; do
+    if pkg_installed "$pkg"; then
+      warn "Package '$pkg' is installed but not in any repo or the AUR (foreign/manual install)"
+    else
+      warn "Package not found in repos or AUR: $pkg"
+    fi
+  done
+}
+
+print_plan() {
+  local repo="${RES_REPO[*]:-(none)}"
+  local aur="${RES_AUR[*]:-(none)}"
+  if [[ "$repo" == "(none)" ]]; then
+    repo="${C_DIM}(none)${C_RESET}"
+  fi
+  if [[ "$aur" == "(none)" ]]; then
+    aur="${C_DIM}(none)${C_RESET}"
+  fi
+  group_line "·" "$C_BLUE" "pacman (repos)" "$repo"
+  group_line "·" "$C_MAGENTA" "paru   (AUR)" "$aur"
+}
+
+
 # ---- Sub-commands ----
 cmd_add() {
   local -a pkgs=("$@")
-  local -a official=()
-  local -a aur=()
-  local pkg src
+  local pkg
 
-  if [[ "$DRY_RUN" == "true" ]]; then
-    notify "Dry run: would install ${pkgs[*]}"
-    if [[ "$ONLY_AUR" != "true" ]]; then
-      run_as_root "$PACMAN" -Syu --needed --noconfirm "${pkgs[@]}"
-    fi
-    if [[ "$NO_AUR" != "true" && "$ONLY_REPO" != "true" ]] && command -v "$AUR_HELPER" >/dev/null 2>&1; then
-      run_as_user "$AUR_HELPER" -Syu --needed --noconfirm --skipreview "${pkgs[@]}"
-    fi
-    return 0
+  local -a force=()
+  local -a needed=(--needed)
+  if [[ "$FORCE" == "true" ]]; then
+    force=(--force)
+    needed=()
   fi
 
   local -a noconfirm=()
@@ -361,70 +681,132 @@ cmd_add() {
     noconfirm=(--noconfirm)
   fi
 
-  notify "Resolving packages"
-  for pkg in "${pkgs[@]}"; do
-    src="$(detect_pkg_source "$pkg")"
-    case "$src" in
-      repo)
-        if [[ "$ONLY_AUR" == "true" ]]; then
-          warn "Skipping '$pkg' (repo package, --only-aur given)"
-        else
-          official+=("$pkg")
-        fi
-        ;;
-      aur)
-        if [[ "$NO_AUR" == "true" ]]; then
-          warn "Skipping '$pkg' (AUR package, --no-aur given)"
-        elif [[ "$ONLY_REPO" == "true" ]]; then
-          warn "Skipping '$pkg' (AUR package, --only-repo given)"
-        else
-          aur+=("$pkg")
-          if [[ -t 0 && -z "${CI:-}" && "$ONLY_AUR" != "true" ]]; then
-            warn "'$pkg' is an AUR package — review PKGBUILD before installing!"
-          fi
-        fi
-        ;;
-      none)
-        warn "Package not found in repos or AUR: $pkg"
-        ;;
-    esac
-  done
+  section "Resolving packages"
+  resolve_groups "${pkgs[@]}"
+  report_unknown
 
-  if [[ ${#official[@]} -gt 0 ]]; then
-    notify "Installing from official repos: ${official[*]}"
-    run_as_root "$PACMAN" -Syu --needed "${noconfirm[@]}" "${official[@]}"
+  # source filters
+  if [[ "$ONLY_AUR" == "true" && ${#RES_REPO[@]} -gt 0 ]]; then
+    for pkg in "${RES_REPO[@]}"; do
+      warn "Skipping '$pkg' (repo package, --only-aur given)"
+    done
+    RES_REPO=()
+  fi
+  if [[ "$NO_AUR" == "true" && ${#RES_AUR[@]} -gt 0 ]]; then
+    for pkg in "${RES_AUR[@]}"; do
+      warn "Skipping '$pkg' (AUR package, --no-aur given)"
+    done
+    RES_AUR=()
+  fi
+  if [[ "$ONLY_REPO" == "true" && ${#RES_AUR[@]} -gt 0 ]]; then
+    for pkg in "${RES_AUR[@]}"; do
+      warn "Skipping '$pkg' (AUR package, --only-repo given)"
+    done
+    RES_AUR=()
   fi
 
-  if [[ ${#aur[@]} -gt 0 ]]; then
+  print_plan
+
+  if [[ ${#RES_REPO[@]} -eq 0 && ${#RES_AUR[@]} -eq 0 ]]; then
+    warn "Nothing to install"
+    return 0
+  fi
+
+  if [[ ${#RES_AUR[@]} -gt 0 && -t 0 && -z "${CI:-}" && "$ONLY_AUR" != "true" ]]; then
+    warn "AUR packages (review their PKGBUILD before installing): ${RES_AUR[*]}"
+  fi
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    section "Dry run"
+    if [[ ${#RES_REPO[@]} -gt 0 ]]; then
+      dry_group "pacman (repos)" root "$PACMAN" -Sy "${needed[@]}" "${force[@]}" --noconfirm "${RES_REPO[@]}"
+    fi
+    if [[ ${#RES_AUR[@]} -gt 0 ]]; then
+      dry_group "paru   (AUR)" user "$AUR_HELPER" -Sy "${needed[@]}" "${force[@]}" \
+        --noconfirm --skipreview "${RES_AUR[@]}"
+    fi
+    return 0
+  fi
+
+  if [[ ${#RES_REPO[@]} -gt 0 ]]; then
+    group_line "✔" "$C_GREEN" "pacman (repos)" "${RES_REPO[*]}"
+    run_as_root "$PACMAN" -Sy "${needed[@]}" "${force[@]}" "${noconfirm[@]}" "${RES_REPO[@]}"
+  fi
+
+  if [[ ${#RES_AUR[@]} -gt 0 ]]; then
     if ! command -v "$AUR_HELPER" >/dev/null 2>&1; then
       die "AUR helper not found: $AUR_HELPER"
     fi
-    notify "Installing from AUR: ${aur[*]}"
-    run_as_user "$AUR_HELPER" -Syu --needed "${noconfirm[@]}" --skipreview "${aur[@]}"
-  fi
-
-  if [[ ${#official[@]} -eq 0 && ${#aur[@]} -eq 0 ]]; then
-    warn "Nothing to install"
+    group_line "✔" "$C_GREEN" "paru   (AUR)" "${RES_AUR[*]}"
+    run_as_user "$AUR_HELPER" -Sy "${needed[@]}" "${force[@]}" "${noconfirm[@]}" \
+      --skipreview "${RES_AUR[@]}"
   fi
 }
 
 cmd_remove() {
   local -a pkgs=("$@")
   local -a noconfirm=()
+  local pkg
+  local -a orphan=()
 
-  notify "Removing packages: ${pkgs[*]}"
   if [[ "$YES" == "true" || "$DRY_RUN" == "true" || ! -t 0 ]]; then
     noconfirm=(--noconfirm)
   fi
 
-  if ! run_as_root_direct "$PACMAN" -Rs "${noconfirm[@]}" "${pkgs[@]}"; then
-    warn "Some dependencies are still required — retrying without dependency removal"
-    run_as_root "$PACMAN" -R "${noconfirm[@]}" "${pkgs[@]}"
+  section "Resolving packages"
+  resolve_groups "${pkgs[@]}"
+
+  # installed but unknown packages (dropped from every repo) are removed by pacman
+  for pkg in "${RES_UNKNOWN[@]}"; do
+    if pkg_installed "$pkg"; then
+      orphan+=("$pkg")
+    else
+      warn "Package not installed: $pkg"
+    fi
+  done
+  if [[ ${#orphan[@]} -gt 0 ]]; then
+    RES_REPO+=("${orphan[@]}")
+  fi
+  RES_UNKNOWN=()
+
+  print_plan
+
+  if [[ ${#RES_REPO[@]} -eq 0 && ${#RES_AUR[@]} -eq 0 ]]; then
+    warn "Nothing to remove"
+    return 0
+  fi
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    section "Dry run"
+    if [[ ${#RES_REPO[@]} -gt 0 ]]; then
+      dry_group "pacman (repos)" root "$PACMAN" -Rs --noconfirm "${RES_REPO[@]}"
+    fi
+    if [[ ${#RES_AUR[@]} -gt 0 ]]; then
+      dry_group "paru   (AUR)" user "$AUR_HELPER" -R --noconfirm "${RES_AUR[@]}"
+    fi
+    return 0
+  fi
+
+  if [[ ${#RES_REPO[@]} -gt 0 ]]; then
+    group_line "✔" "$C_GREEN" "pacman (repos)" "${RES_REPO[*]}"
+    if ! run_as_root_direct "$PACMAN" -Rs "${noconfirm[@]}" "${RES_REPO[@]}"; then
+      warn "Some dependencies are still required — retrying without dependency removal"
+      run_as_root "$PACMAN" -R "${noconfirm[@]}" "${RES_REPO[@]}"
+    fi
+  fi
+
+  if [[ ${#RES_AUR[@]} -gt 0 ]]; then
+    if ! command -v "$AUR_HELPER" >/dev/null 2>&1; then
+      warn "AUR helper not found: $AUR_HELPER (skipped AUR removal)"
+    else
+      group_line "✔" "$C_GREEN" "paru   (AUR)" "${RES_AUR[*]}"
+      run_as_user "$AUR_HELPER" -R "${noconfirm[@]}" "${RES_AUR[@]}"
+    fi
   fi
 }
 
 cmd_refresh() {
-  notify "Refreshing package databases"
+  section "Refreshing package databases"
   run_as_root "$PACMAN" -Syy
 }
 
@@ -436,19 +818,59 @@ cmd_update() {
     noconfirm=(--noconfirm)
   fi
 
-  if [[ ${#pkgs[@]} -gt 0 ]]; then
-    notify "Updating packages: ${pkgs[*]}"
-    run_as_root "$PACMAN" -Syu "${noconfirm[@]}" "${pkgs[@]}"
+  local -a force=()
+  local -a needed=(--needed)
+  if [[ "$FORCE" == "true" ]]; then
+    force=(--force)
+    needed=()
+  fi
+
+  if [[ ${#pkgs[@]} -eq 0 ]]; then
+    # No packages given: full system update.
+    section "Full system update"
+    run_as_root "$PACMAN" -Syyu "${needed[@]}" "${force[@]}" "${noconfirm[@]}"
     if command -v "$AUR_HELPER" >/dev/null 2>&1; then
-      run_as_user "$AUR_HELPER" -Syu "${noconfirm[@]}" --skipreview "${pkgs[@]}"
+      run_as_user "$AUR_HELPER" -Syu "${needed[@]}" "${force[@]}" "${noconfirm[@]}" \
+      --skipreview
     else
       warn "AUR helper not found: $AUR_HELPER (skipped AUR update)"
     fi
-  else
-    notify "Full system update (repos + AUR)"
-    run_as_root "$PACMAN" -Syyu "${noconfirm[@]}"
+    return 0
+  fi
+
+  # Targeted update: group by source, then update each group in one go.
+  section "Resolving packages"
+  resolve_groups "${pkgs[@]}"
+  report_unknown
+  print_plan
+
+  if [[ ${#RES_REPO[@]} -eq 0 && ${#RES_AUR[@]} -eq 0 ]]; then
+    warn "Nothing to update"
+    return 0
+  fi
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    section "Dry run"
+    if [[ ${#RES_REPO[@]} -gt 0 ]]; then
+      dry_group "pacman (repos)" root "$PACMAN" -Sy "${needed[@]}" "${force[@]}" --noconfirm "${RES_REPO[@]}"
+    fi
+    if [[ ${#RES_AUR[@]} -gt 0 ]]; then
+      dry_group "paru   (AUR)" user "$AUR_HELPER" -Sy "${needed[@]}" "${force[@]}" \
+        --noconfirm --skipreview "${RES_AUR[@]}"
+    fi
+    return 0
+  fi
+
+  if [[ ${#RES_REPO[@]} -gt 0 ]]; then
+    group_line "✔" "$C_GREEN" "pacman (repos)" "${RES_REPO[*]}"
+    run_as_root "$PACMAN" -Sy "${needed[@]}" "${force[@]}" "${noconfirm[@]}" "${RES_REPO[@]}"
+  fi
+
+  if [[ ${#RES_AUR[@]} -gt 0 ]]; then
     if command -v "$AUR_HELPER" >/dev/null 2>&1; then
-      run_as_user "$AUR_HELPER" -Syu "${noconfirm[@]}" --skipreview
+      group_line "✔" "$C_GREEN" "paru   (AUR)" "${RES_AUR[*]}"
+      run_as_user "$AUR_HELPER" -Sy "${needed[@]}" "${force[@]}" "${noconfirm[@]}" \
+      --skipreview "${RES_AUR[@]}"
     else
       warn "AUR helper not found: $AUR_HELPER (skipped AUR update)"
     fi
@@ -508,12 +930,12 @@ cmd_search() {
     return 0
   fi
 
-  notify "Searching for: $query"
-  info "=== Official repos ==="
-  query_output "$PACMAN" -Ss "$query"
+  section "Searching for: $query"
+  step "official repos"
+  query_output "$PACMAN" -Ss "$query" | colorize_pkg_lines | indent
   if [[ "$NO_AUR" != "true" ]] && command -v "$AUR_HELPER" >/dev/null 2>&1; then
-    info "=== AUR ==="
-    query_output_as_user "$AUR_HELPER" -Ss "$query"
+    step "AUR"
+    query_output_as_user "$AUR_HELPER" -Ss "$query" | colorize_pkg_lines | indent
   fi
 }
 
@@ -565,12 +987,12 @@ cmd_info() {
 
   case "$src" in
     repo)
-      info "Found in official repos:"
-      "$PACMAN" -Si "$pkg"
+      section "Found in official repos"
+      "$PACMAN" -Si "$pkg" | colorize_fields | indent
       ;;
     aur)
-      info "Found in AUR:"
-      run_as_user "$AUR_HELPER" -Si "$pkg"
+      section "Found in the AUR"
+      run_as_user "$AUR_HELPER" -Si "$pkg" | colorize_fields | indent
       ;;
   esac
 }
@@ -648,19 +1070,42 @@ cmd_list() {
 
   if [[ "$NUMBER" == "true" ]]; then
     if [[ "$LIST_FILTER_GIVEN" == "false" ]]; then
-      printf '%s\n' "$count"
+      printf '%s%s%s\n' "$C_BOLD" "$count" "$C_RESET"
       return 0
     fi
+    local -a rows=()
     idx=1
     for line in "${items[@]}"; do
-      printf '%s %d\n' "$line" "$idx"
+      rows+=("$line ${C_DIM}${idx}${C_RESET}")
       idx=$((idx+1))
     done
-    printf 'Total: %d\n' "$count"
-  else
-    if [[ $count -gt 0 ]]; then
-      printf '%s\n' "${items[@]}"
+    print_rows "${rows[@]}"
+    if [[ "$LIST_LINE" != "true" ]]; then
+      printf '  %sTotal: %d%s\n' "$C_DIM" "$count" "$C_RESET"
     fi
+  else
+    print_rows "${items[@]}"
+  fi
+}
+
+# Print the rows either one per line or, with -l/--line, all on a single line
+# separated by spaces (handy for feeding them into other commands).
+print_rows() {
+  local sep=$'\n'
+  local out=""
+  local row
+  if [[ "$LIST_LINE" == "true" ]]; then
+    sep=' '
+  fi
+  for row in "$@"; do
+    if [[ -n "$out" ]]; then
+      out+="$sep$row"
+    else
+      out="$row"
+    fi
+  done
+  if [[ -n "$out" ]]; then
+    printf '%s\n' "$out"
   fi
 }
 
@@ -670,217 +1115,346 @@ generate_completions() {
   case "$shell" in
     bash)
       cat <<'BASH_EOF'
-# n0ct-pkg bash completions
-_n0ct_pkg() {
-  local cur prev opts cmds
-  COMPREPLY=()
-  cur="${COMP_WORDS[COMP_CWORD]}"
-  prev="${COMP_WORDS[COMP_CWORD-1]}"
-  cmds="add remove update refresh search info list completions"
-  opts="-y --yes -D --dry-run -n --number -h --help"
+# n0ct-pkg bash completion
+# Install with: n0ct-pkg completions bash
 
-  _n0ct_pkg_packages() {
-    local pkgs
-    pkgs=$(pacman -Slq 2>/dev/null; command -v paru >/dev/null && paru -Slq 2>/dev/null | grep -v '^\(local\|core\|extra\|community\|multilib\)/' || true)
-    COMPREPLY=( $(compgen -W "$pkgs" -- "$cur") )
-  }
-
-  case "$prev" in
-    add)
-      if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--only-repo --only-aur --no-aur $opts" -- "$cur") )
-      else
-        _n0ct_pkg_packages
-      fi
-      return 0
-      ;;
-    remove)
-      if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-      else
-        COMPREPLY=( $(compgen -W "$(pacman -Qq 2>/dev/null)" -- "$cur") )
-      fi
-      return 0
-      ;;
-    update|refresh)
-      COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-      return 0
-      ;;
-    search|info)
-      COMPREPLY=( $(compgen -W "--no-aur $opts" -- "$cur") )
-      return 0
-      ;;
-    list)
-      COMPREPLY=( $(compgen -W "-i --installed -p --pacman -a --aur -e --explicit -u --upgradable -d --deps $opts" -- "$cur") )
-      return 0
-      ;;
-    completions)
-      COMPREPLY=( $(compgen -W "bash zsh fish sh" -- "$cur") )
-      return 0
-      ;;
-  esac
-
-  if [[ "$cur" == -* ]]; then
-    COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-  else
-    COMPREPLY=( $(compgen -W "$cmds" -- "$cur") )
-  fi
+_n0ct_pkg_repo_packages() {
+    pacman -Slq 2>/dev/null
 }
+
+_n0ct_pkg_installed_packages() {
+    pacman -Qq 2>/dev/null
+}
+
+_n0ct_pkg_aur_packages() {
+    # AUR packages that were cloned locally: fast and works offline
+    local cache="${XDG_CACHE_HOME:-$HOME/.cache}/paru/clone"
+    local dir
+    [[ -d "$cache" ]] || return 0
+    for dir in "$cache"/*; do
+        [[ -d "$dir" ]] || continue
+        printf '%s\n' "${dir##*/}"
+    done
+}
+
+_n0ct_pkg_aur_search() {
+    # ask the AUR for packages starting with the current word (network, so it
+    # is only used when the local lists did not match anything)
+    local prefix="$1"
+    [[ ${#prefix} -ge 3 ]] || return 0
+    command -v curl >/dev/null 2>&1 || return 0
+    curl -s -m 2 "https://aur.archlinux.org/rpc/v5/search?by=name&arg=${prefix}" 2>/dev/null \
+        | grep -o '"Name":"[^"]*"' \
+        | sed 's/^"Name":"//; s/"$//'
+}
+
+# compgen the candidates and drop the ones already on the command line
+_n0ct_pkg_compgen() {
+    local -a candidates=("$@")
+    local i r
+    COMPREPLY=($(compgen -W "${candidates[*]}" -- "$cur"))
+    for ((i = 1; i < ${#COMP_WORDS[@]} - 1; i++)); do
+        for r in "${!COMPREPLY[@]}"; do
+            if [[ "${COMP_WORDS[i]}" == "${COMPREPLY[r]}" ]]; then
+                unset 'COMPREPLY[r]'
+                break
+            fi
+        done
+    done
+}
+
+# usage: _n0ct_pkg_complete_packages repo|installed|aur ...
+_n0ct_pkg_complete_packages() {
+    local -a candidates=()
+    local want_repo=false want_installed=false want_aur=false
+    local kind
+
+    for kind in "$@"; do
+        case "$kind" in
+            repo)      want_repo=true ;;
+            installed) want_installed=true ;;
+            aur)       want_aur=true ;;
+        esac
+    done
+
+    if [[ "$want_installed" == "true" ]]; then
+        mapfile -t candidates < <(pacman -Qq 2>/dev/null)
+    fi
+    if [[ "$want_repo" == "true" ]]; then
+        mapfile -t -O "${#candidates[@]}" candidates < <(pacman -Slq 2>/dev/null)
+    fi
+    if [[ "$want_aur" == "true" ]]; then
+        mapfile -t -O "${#candidates[@]}" candidates < <(_n0ct_pkg_aur_packages)
+    fi
+
+    _n0ct_pkg_compgen "${candidates[@]}"
+
+    # nothing local matched: ask the AUR
+    if [[ ${#COMPREPLY[@]} -eq 0 && "$want_aur" == "true" ]]; then
+        mapfile -t -O "${#candidates[@]}" candidates < <(_n0ct_pkg_aur_search "$cur")
+        if [[ ${#candidates[@]} -gt 0 ]]; then
+            _n0ct_pkg_compgen "${candidates[@]}"
+        fi
+    fi
+}
+
+_n0ct_pkg() {
+    local cur prev words cword
+    local cmd="" i
+
+    if declare -F _init_completion >/dev/null 2>&1; then
+        _init_completion -s || return
+    else
+        COMPREPLY=()
+        cur="${COMP_WORDS[COMP_CWORD]}"
+        prev="${COMP_WORDS[COMP_CWORD-1]}"
+        words=("${COMP_WORDS[@]}")
+        cword=$COMP_CWORD
+    fi
+
+    local cmds="add remove update refresh search info list completions"
+    local global_opts="-y --yes -D --dry-run -n --number -F --force -h --help --color --no-color"
+    local add_opts="--only-repo --only-aur --no-aur"
+    local list_opts="-i --installed -p --pacman -a --aur -e --explicit -u --upgradable -d --deps -l --line"
+
+    # the command may be given before or after the flags
+    for ((i = 1; i < cword; i++)); do
+        case "${words[i]}" in
+            add|remove|update|refresh|search|info|list|completions)
+                cmd="${words[i]}"
+                break
+                ;;
+        esac
+    done
+
+    if [[ "$cur" == -* ]]; then
+        case "$cmd" in
+            add)        COMPREPLY=($(compgen -W "$add_opts $global_opts" -- "$cur")) ;;
+            list)       COMPREPLY=($(compgen -W "$list_opts $global_opts" -- "$cur")) ;;
+            search|info) COMPREPLY=($(compgen -W "--no-aur $global_opts" -- "$cur")) ;;
+            *)          COMPREPLY=($(compgen -W "$global_opts" -- "$cur")) ;;
+        esac
+        return 0
+    fi
+
+    case "$cmd" in
+        add)          _n0ct_pkg_complete_packages repo aur ;;
+        remove)       _n0ct_pkg_complete_packages installed ;;
+        update)       _n0ct_pkg_complete_packages installed repo ;;
+        info)         _n0ct_pkg_complete_packages installed repo aur ;;
+        completions)  COMPREPLY=($(compgen -W "bash zsh fish sh" -- "$cur")) ;;
+        list|refresh) COMPREPLY=() ;;
+        *)            COMPREPLY=($(compgen -W "$cmds" -- "$cur")) ;;
+    esac
+}
+
 complete -F _n0ct_pkg n0ct-pkg
 BASH_EOF
       ;;
     zsh)
       cat <<'ZSH_EOF'
 #compdef n0ct-pkg
+# n0ct-pkg zsh completion
+# Install with: n0ct-pkg completions zsh
+
+_n0ct_pkg_repo_packages() {
+    local -a pkgs
+    pkgs=(${(f)"$(pacman -Slq 2>/dev/null)"})
+    _wanted packages expl 'package' compadd -a pkgs
+}
+
+_n0ct_pkg_installed_packages() {
+    local -a pkgs
+    pkgs=(${(f)"$(pacman -Qq 2>/dev/null)"})
+    _wanted packages expl 'installed package' compadd -a pkgs
+}
+
+_n0ct_pkg_all_packages() {
+    local -a pkgs
+    pkgs=(${(f)"$(pacman -Slq 2>/dev/null; pacman -Qq 2>/dev/null)"})
+    pkgs=(${(u)pkgs})
+    _wanted packages expl 'package' compadd -a pkgs
+}
+
+_n0ct_pkg_add_packages() {
+    local -a pkgs
+    local cache="${XDG_CACHE_HOME:-$HOME/.cache}/paru/clone"
+    pkgs=(${(f)"$(pacman -Slq 2>/dev/null)"})
+    if [[ -d "$cache" ]]; then
+        pkgs+=(${(f)"$(command ls -1 -- "$cache" 2>/dev/null)"})
+    fi
+    pkgs=(${(u)pkgs})
+    _wanted packages expl 'package' compadd -a pkgs
+}
+
+_n0ct_pkg_global_opts=(
+    '(-y --yes)'{-y,--yes}'[Auto-confirm (non-interactive)]'
+    '(-D --dry-run)'{-D,--dry-run}'[Print commands without executing]'
+    '(-n --number)'{-n,--number}'[Number the output / print only a count]'
+    '(-F --force)'{-F,--force}'[Reinstall even if up to date (add/update)]'
+    '(-h --help)'{-h,--help}'[Show help]'
+    '--color[Force colored output, also --color=always/never]'
+    '--no-color[Disable colored output]'
+)
+
+_n0ct_pkg_add_opts=(
+    '--only-repo[Install only official repo packages]'
+    '--only-aur[Install only AUR packages]'
+    '--no-aur[Skip AUR entirely]'
+)
+
+_n0ct_pkg_list_opts=(
+    '(-i --installed)'{-i,--installed}'[Installed packages (default)]'
+    '(-p --pacman)'{-p,--pacman}'[Only official repo packages]'
+    '(-a --aur)'{-a,--aur}'[Only AUR/foreign packages]'
+    '(-e --explicit)'{-e,--explicit}'[Explicitly installed packages]'
+    '(-u --upgradable)'{-u,--upgradable}'[Packages with available updates]'
+    '(-d --deps)'{-d,--deps}'[Dependency packages]'
+    '(-l --line)'{-l,--line}'[All packages on a single line]'
+)
+
 _n0ct_pkg() {
-  local -a cmds
-  local -a add_opts
-  local -a list_opts
-  local -a search_opts
-  local -a global_opts
+    local context state state_descr line
+    typeset -A opt_args
+    local -a commands
 
-  cmds=(
-    'add:Install packages (auto-detect repo vs AUR)'
-    'remove:Remove packages'
-    'update:Update packages, or the whole system when none given'
-    'refresh:Refresh package databases (pacman -Syy)'
-    'search:Search both repos and AUR'
-    'info:Show package info'
-    'list:List packages with filters'
-    'completions:Generate shell completions'
-  )
+    commands=(
+        'add:Install packages (auto-detect repo vs AUR)'
+        'remove:Remove packages'
+        'update:Update given packages, or the whole system'
+        'refresh:Refresh package databases (pacman -Syy)'
+        'search:Search both repos and AUR'
+        'info:Show package info'
+        'list:List packages with filters'
+        'completions:Install shell completions system-wide'
+    )
 
-  add_opts=(
-    '--only-repo:Install only official repo packages'
-    '--only-aur:Install only AUR packages (suppresses AUR warning)'
-    '--no-aur:Skip AUR entirely'
-  )
+    _arguments -C \
+        "${_n0ct_pkg_global_opts[@]}" \
+        '1: :->command' \
+        '*::arg:->args'
 
-  list_opts=(
-    '-i --installed:Installed packages'
-    '-p --pacman:Only official repo packages'
-    '-a --aur:Only AUR/foreign packages'
-    '-e --explicit:Explicitly installed packages'
-    '-u --upgradable:Packages with available updates'
-    '-d --deps:Dependency packages'
-  )
-
-  search_opts=('--no-aur:Skip AUR entirely')
-
-  global_opts=(
-    '-y --yes:Auto-confirm (non-interactive)'
-    '-D --dry-run:Print commands without executing'
-    '-n --number:Number the output / print only a count'
-    '-h --help:Show help'
-  )
-
-  _arguments -C \
-    "${global_opts[@]}" \
-    "1: :($cmds)" \
-    "*::arg:->subcmds"
-
-  if (( CURRENT == 1 )); then
-    compadd -a cmds
-    return
-  fi
-
-  case "$state" in
-    subcmds)
-      case "${words[1]}" in
-        add)
-          _arguments "${global_opts[@]}" "${add_opts[@]}" "*::packages: _pacman_packages"
-          ;;
-        remove)
-          _arguments "${global_opts[@]}" "*::packages: _pacman_installed_packages"
-          ;;
-        update|refresh)
-          _arguments "${global_opts[@]}"
-          ;;
-        search)
-          _arguments "${global_opts[@]}" "${search_opts[@]}" ":query:"
-          ;;
-        info)
-          _arguments "${global_opts[@]}" "${search_opts[@]}" ":package:"
-          ;;
-        list)
-          _arguments "${global_opts[@]}" "${list_opts[@]}"
-          ;;
-        completions)
-          compadd bash zsh fish sh
-          ;;
-        *)
-          compadd -a cmds
-          ;;
-      esac
-      ;;
-    *)
-      compadd -a cmds
-      ;;
-  esac
+    case "$state" in
+        command)
+            _describe -t commands 'n0ct-pkg command' commands
+            ;;
+        args)
+            case "${words[1]}" in
+                add)
+                    _arguments "${_n0ct_pkg_global_opts[@]}" "${_n0ct_pkg_add_opts[@]}" \
+                        '*:package:_n0ct_pkg_add_packages'
+                    ;;
+                remove)
+                    _arguments "${_n0ct_pkg_global_opts[@]}" \
+                        '*:installed package:_n0ct_pkg_installed_packages'
+                    ;;
+                update)
+                    _arguments "${_n0ct_pkg_global_opts[@]}" \
+                        '*:installed package:_n0ct_pkg_installed_packages'
+                    ;;
+                search)
+                    _arguments "${_n0ct_pkg_global_opts[@]}" \
+                        '--no-aur[Skip AUR entirely]' \
+                        ':query:'
+                    ;;
+                info)
+                    _arguments "${_n0ct_pkg_global_opts[@]}" \
+                        '--no-aur[Skip AUR entirely]' \
+                        ':package:_n0ct_pkg_all_packages'
+                    ;;
+                list)
+                    _arguments "${_n0ct_pkg_global_opts[@]}" "${_n0ct_pkg_list_opts[@]}"
+                    ;;
+                completions)
+                    _arguments "${_n0ct_pkg_global_opts[@]}" \
+                        ':shell:(bash zsh fish sh)'
+                    ;;
+                *)
+                    _describe -t commands 'n0ct-pkg command' commands
+                    ;;
+            esac
+            ;;
+    esac
 }
 
-_pacman_packages() {
-  local -a pkgs
-  pkgs=(${(f)"$(pacman -Slq 2>/dev/null; command -v paru >/dev/null && paru -Slq 2>/dev/null | grep -v '^\(local\|core\|extra\|community\|multilib\)/' || true)"})
-  compadd -a pkgs
-}
-
-_pacman_installed_packages() {
-  local -a pkgs
-  pkgs=(${(f)"$(pacman -Qq 2>/dev/null)"})
-  compadd -a pkgs
-}
-
-compdef _n0ct_pkg n0ct-pkg
+if (( $+functions[compdef] )); then
+    compdef _n0ct_pkg n0ct-pkg
+fi
 ZSH_EOF
       ;;
     fish)
       cat <<'FISH_EOF'
-# n0ct-pkg fish completions
+# n0ct-pkg fish completion
+# Install with: n0ct-pkg completions fish
+
 complete -c n0ct-pkg -f
-complete -c n0ct-pkg -n "not __fish_seen_subcommand_from add remove update refresh search info list completions" -a "add remove update refresh search info list completions"
 
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from add" -l only-repo -d "Install only official repo packages"
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from add" -l only-aur -d "Install only AUR packages (suppresses AUR warning)"
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from add" -l no-aur -d "Skip AUR entirely"
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from add" -x -a "(pacman -Slq 2>/dev/null; or (command -v paru >/dev/null; and paru -Slq 2>/dev/null | grep -v '^\(local\|core\|extra\|community\|multilib\)/' ))" -d "Package name"
+complete -c n0ct-pkg -n __fish_use_subcommand -a add        -d 'Install packages (auto-detect repo vs AUR)'
+complete -c n0ct-pkg -n __fish_use_subcommand -a remove     -d 'Remove packages'
+complete -c n0ct-pkg -n __fish_use_subcommand -a update     -d 'Update given packages, or the whole system'
+complete -c n0ct-pkg -n __fish_use_subcommand -a refresh    -d 'Refresh package databases'
+complete -c n0ct-pkg -n __fish_use_subcommand -a search     -d 'Search both repos and AUR'
+complete -c n0ct-pkg -n __fish_use_subcommand -a info       -d 'Show package info'
+complete -c n0ct-pkg -n __fish_use_subcommand -a list       -d 'List packages with filters'
+complete -c n0ct-pkg -n __fish_use_subcommand -a completions -d 'Install shell completions system-wide'
 
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from remove" -x -a "(pacman -Qq 2>/dev/null)" -d "Installed package name"
+# add
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from add" -l only-repo -d 'Install only official repo packages'
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from add" -l only-aur  -d 'Install only AUR packages'
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from add" -l no-aur    -d 'Skip AUR entirely'
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from add" -x -a "(pacman -Slq 2>/dev/null)" -d 'Package name'
 
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from list" -s i -l installed -d "Installed packages"
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from list" -s p -l pacman -d "Only official repo packages"
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from list" -s a -l aur -d "Only AUR/foreign packages"
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from list" -s e -l explicit -d "Explicitly installed packages"
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from list" -s u -l upgradable -d "Packages with available updates"
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from list" -s d -l deps -d "Dependency packages"
+# remove / update
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from remove" -x -a "(pacman -Qq 2>/dev/null)" -d 'Installed package'
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from update" -x -a "(pacman -Qq 2>/dev/null)" -d 'Installed package'
 
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from search" -l no-aur -d "Skip AUR entirely"
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from search" -s n -l number -d "Print only the number of matches"
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from info" -l no-aur -d "Skip AUR entirely"
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from info" -s n -l number -d "Print only <pkg> <version>"
-complete -c n0ct-pkg -n "__fish_seen_subcommand_from completions" -a "bash zsh fish sh"
+# search / info
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from search" -l no-aur -d 'Skip AUR entirely'
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from info"   -l no-aur -d 'Skip AUR entirely'
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from info" -x -a "(pacman -Qq 2>/dev/null; pacman -Slq 2>/dev/null)" -d 'Package name'
 
-complete -c n0ct-pkg -s y -l yes -d "Auto-confirm (non-interactive)"
-complete -c n0ct-pkg -s D -l dry-run -d "Print commands without executing"
-complete -c n0ct-pkg -s n -l number -d "Number the output / print only a count"
-complete -c n0ct-pkg -s h -l help -d "Show help"
+# list
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from list" -s i -l installed   -d 'Installed packages (default)'
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from list" -s p -l pacman      -d 'Only official repo packages'
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from list" -s a -l aur         -d 'Only AUR/foreign packages'
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from list" -s e -l explicit    -d 'Explicitly installed packages'
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from list" -s u -l upgradable  -d 'Packages with available updates'
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from list" -s d -l deps        -d 'Dependency packages'
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from list" -s l -l line        -d 'All packages on a single line'
+
+# completions
+complete -c n0ct-pkg -n "__fish_seen_subcommand_from completions" -a "bash zsh fish sh" -d 'Shell'
+
+# global options
+complete -c n0ct-pkg -s y -l yes      -d 'Auto-confirm (non-interactive)'
+complete -c n0ct-pkg -s D -l dry-run  -d 'Print commands without executing'
+complete -c n0ct-pkg -s n -l number   -d 'Number the output / print only a count'
+complete -c n0ct-pkg -s F -l force    -d 'Reinstall even if up to date (add/update)'
+complete -c n0ct-pkg -s h -l help     -d 'Show help'
+complete -c n0ct-pkg      -l color    -d 'Force colored output'
+complete -c n0ct-pkg      -l no-color -d 'Disable colored output'
 FISH_EOF
       ;;
     sh)
       cat <<'SH_EOF'
-# n0ct-pkg POSIX sh completions (basic)
-# For POSIX sh, completions are limited. Source this file and use:
-#   complete -c n0ct-pkg -f
-# Or use a shell that supports programmable completion (bash/zsh/fish).
-# This file provides the command list for reference.
+# n0ct-pkg POSIX sh completion (basic)
+#
+# POSIX sh has no programmable completion, so this file only provides the
+# command and option lists for reference / for shells that support them.
+#
+#   . /usr/share/n0ct-pkg/sh-completions
+#
+# Use bash, zsh or fish for real completions:
+#   n0ct-pkg completions bash|zsh|fish
 
 _n0ct_pkg_cmds="add remove update refresh search info list completions"
-_n0ct_pkg_global_opts="-y --yes -D --dry-run -n --number -h --help"
+
+_n0ct_pkg_global_opts="-y --yes -D --dry-run -n --number -F --force -h --help --color --no-color"
 _n0ct_pkg_add_opts="--only-repo --only-aur --no-aur"
-_n0ct_pkg_list_opts="-i --installed -p --pacman -a --aur -e --explicit -u --upgradable -d --deps -n --number"
+_n0ct_pkg_list_opts="-i --installed -p --pacman -a --aur -e --explicit -u --upgradable -d --deps -l --line"
 _n0ct_pkg_search_opts="--no-aur"
 
-# Usage: source this file, then implement your shell's completion mechanism
+_n0ct_pkg_shells="bash zsh fish sh"
 SH_EOF
       ;;
     *)
@@ -915,7 +1489,13 @@ cmd_completions() {
   generate_completions "$shell" > "$tmp" || die "Failed to generate completions for $shell"
 
   run_as_root install -Dm644 "$tmp" "$dest"
-  info "Installed $shell completions to $dest"
+  ok "Installed $shell completions to $dest"
+
+  case "$shell" in
+    bash) info "Restart bash to pick up the completions" ;;
+    zsh)  info "Restart zsh (or run compinit) to pick up the completions" ;;
+    fish) info "Restart fish to pick up the completions" ;;
+  esac
 }
 
 # ---- Main ----
@@ -938,6 +1518,10 @@ main() {
     die "List filters (-i/-p/-a/-e/-u/-d) are only valid for the 'list' command"
   fi
 
+  if [[ "$LIST_LINE" == "true" && "$main_cmd" != "list" ]]; then
+    die "Option -l/--line is only valid for the 'list' command"
+  fi
+
   if [[ "$NUMBER" == "true" ]]; then
     case "$main_cmd" in
       list|search|info) ;;
@@ -947,6 +1531,13 @@ main() {
 
   if [[ ( "$ONLY_REPO" == "true" || "$ONLY_AUR" == "true" ) && "$main_cmd" != "add" ]]; then
     die "Options --only-repo/--only-aur are only valid for the 'add' command"
+  fi
+
+  if [[ "$FORCE" == "true" ]]; then
+    case "$main_cmd" in
+      add|update) ;;
+      *) die "Option -F/--force is only valid for 'add' and 'update'" ;;
+    esac
   fi
 
   if [[ "$LIST_PACMAN" == "true" && "$LIST_AUR" == "true" ]]; then

@@ -46,7 +46,9 @@ code**. Readable, diffable, safe to dry-run, free of escaping hell.
 (`compile_pattern`), five file ops (`op_create/delete/append/replace/symlink`),
 command runner (`run_command`), package hook (`apply_packages` +
 `merge_packages` via `n0ct-pkg`), applied-file tracking (`load_applied` /
-`save_applied`), batch driver (`select_patches` / `apply_batch`).
+`save_applied`), batch driver (`select_patches` / `apply_batch`), and
+**schema validation caching** (`_get_schema_validator` — compiles the
+jsonschema validator once per schema file, reused across all patches).
 
 ## 4. Core concepts
 
@@ -82,9 +84,13 @@ n0ct-patch --all [same options]                                  # full batch
 | `--all` | every sorted `*.yaml`, record ignored | each file on success, no duplicates |
 
 A positional patch file cannot be combined with a batch flag
-(argparse error, exit 2). Exit codes: `0` success (including
-"nothing to do"), `1` on any `FAILED:`, `2` on CLI misuse,
-`130` on `Ctrl+C` (child group killed, partial batch stays as-is).
+(argparse error, exit 2). Exit codes:
+
+- `0` — clean (no errors, no pending in check mode)
+- `1` — pending patches (check mode) or any `FAILED:`
+- `2` — CLI misuse / schema validation errors
+- `3` — usage error (invalid args)
+- `130` — `Ctrl+C` (child group killed, partial batch stays as-is)
 
 ## 6. Batch pipeline
 
@@ -204,17 +210,41 @@ record file in §8 already has it). `Ctrl+C` anywhere kills the active
 child group and exits `130` with one clean line, no traceback — nothing
 is registered beyond the last `[register]`.
 
-## 11. Error handling — what aborts, what registers
+## 11. Error reporting (rich output)
+
+Every `FAILED:` now includes:
+
+- **ANSI color output** (red error, yellow warning, cyan info, dim line numbers)
+- **5-line context** (±2 lines around the error) with the error line highlighted
+- **Caret** pointing to the exact column when available
+
+Color is auto-detected via TTY check (`COLOR_MODE=auto` default, honors `NO_COLOR`, `--color`/`--no-color` flags if added later).
+
+Errors are formatted like:
+
+```
+  ✗ 1.2.0-bad.yaml
+    schema validation failed: 'not-a-list' is not of type 'array' (at packages -> add)
+    at meta.packages.add
+   4 |   packages:
+   5 |     add: "not-a-list"
+    |           ^
+   6 |     remove: []
+   7 |
+```
+
+## 12. Error handling — what aborts, what registers
 
 Anything in this list aborts the run immediately with `FAILED:`:
 
-- missing/invalid `meta.version`, unreadable YAML or patch file
+- missing/invalid `meta.scope`, unreadable YAML or patch file
+- schema validation error (when schema.yaml present)
 - bad match pattern: zero slots, two slots, unknown slot body,
   empty token (double space in pattern)
 - `replace` with zero matching lines, or a missing target file
-- `create` on an existing file without `overwrite: true`
+- `create` on an existing file without `overwrite: true` — **skips** (logs `[create] path — EXISTS, overwrite=false → SKIP`)
 - `delete` on a missing file with `missing_ok: false`
-- `append` on a missing file
+- `append` on a missing file — **skips** (logs `[append] path — MISSING → SKIP`)
 - unknown file `op`
 - any command/`pre`/`post` exiting non-zero or timing out
 - any package step exiting non-zero or timing out
