@@ -1,0 +1,303 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+$id: "https://n0ctaneteam.github.io/N0ctOS/schemas/patch.schema.yaml"
+title: "N0ctOS Patch"
+description: "Schema for N0ctOS patch files applied by bin/n0ct-patch. Provides IDE autosuggestions, error-lens, and runtime enforcement."
+type: object
+required: [meta]
+additionalProperties: false
+properties:
+  meta:
+    $ref: "#/definitions/meta"
+  packages:
+    $ref: "#/definitions/packages"
+  pre:
+    $ref: "#/definitions/commandBlockList"
+  files:
+    type: array
+    items:
+      $ref: "#/definitions/fileOp"
+  commands:
+    $ref: "#/definitions/commandBlockList"
+  post:
+    $ref: "#/definitions/commandBlockList"
+
+definitions:
+  meta:
+    title: "Patch Metadata"
+    description: "Identity and control fields for the patch."
+    type: object
+    required: [name, scope]
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        minLength: 1
+        title: "Name"
+        description: "Short label shown in logs."
+        examples: ["Base System", "Add yay", "Fix spacing"]
+      summary:
+        type: string
+        title: "Summary"
+        description: "One-line description shown in logs."
+        examples: ["Base system configuration", "Adds yay AUR helper"]
+      scope:
+        type: string
+        title: "Scope"
+        description: "Whether this patch applies system-wide or per-user."
+        enum: [system, local]
+        examples: ["system", "local"]
+      register:
+        type: boolean
+        title: "Register"
+        description: "Whether to record this patch in the applied-file after success. Explicit-file mode never registers regardless."
+        default: false
+        examples: [true, false]
+      authors:
+        title: "Authors"
+        description: "Informational only."
+        type: array
+        items:
+          type: object
+          required: [name]
+          additionalProperties: false
+          properties:
+            name:
+              type: string
+              minLength: 1
+              description: "Author name."
+            email:
+              type: string
+              format: email
+              description: "Author email (optional)."
+
+  packages:
+    title: "Packages"
+    description: "Package add/remove lists. Delegated to n0ct-pkg."
+    type: object
+    additionalProperties: false
+    properties:
+      add:
+        title: "Add"
+        description: "Package names to install (auto-detects repo vs AUR)."
+        type: array
+        items:
+          type: string
+          minLength: 1
+        examples: [["git", "curl"], ["yay", "paru"]]
+      remove:
+        title: "Remove"
+        description: "Package names to uninstall."
+        type: array
+        items:
+          type: string
+          minLength: 1
+        examples: [["memcached"], ["firefox"]]
+
+  when:
+    title: "When Condition"
+    description: "Skip this operation unless the shell command exits 0. Runs even in --dry-run."
+    oneOf:
+      - type: string
+        description: "Single shell command."
+        examples: ['test -f /etc/app/config.toml']
+      - type: array
+        description: "List of shell commands; ALL must exit 0."
+        items:
+          type: string
+          minLength: 1
+        examples: [['test -f /etc/app/config.toml', 'systemctl is-enabled app']]
+
+  commandBlock:
+    title: "Command Block"
+    description: "A shell command with optional timeout and when-guard."
+    type: object
+    required: [id, run]
+    additionalProperties: false
+    properties:
+      id:
+        type: string
+        minLength: 1
+        title: "ID"
+        description: "Short label used in logs."
+        examples: ["reload", "verify", "backup"]
+      run:
+        type: string
+        minLength: 1
+        title: "Run"
+        description: "Shell script of any length, executed via sh -c."
+        examples: ["systemctl daemon-reload\nsystemctl restart app", "grep -qF 'marker' /etc/app/config.toml"]
+      timeout:
+        type: integer
+        minimum: 1
+        default: 300
+        title: "Timeout"
+        description: "Seconds before the command is killed."
+        examples: [30, 60, 300]
+      when:
+        $ref: "#/definitions/when"
+
+  commandBlockList:
+    title: "Command Block List"
+    type: array
+    items:
+      $ref: "#/definitions/commandBlock"
+
+  fileOp:
+    title: "File Operation"
+    description: "A file system mutation. Discriminated by 'op'."
+    oneOf:
+      - $ref: "#/definitions/opCreate"
+      - $ref: "#/definitions/opDelete"
+      - $ref: "#/definitions/opAppend"
+      - $ref: "#/definitions/opReplace"
+      - $ref: "#/definitions/opSymlink"
+
+  opCreate:
+    title: "Create"
+    description: "Create a file (or overwrite when overwrite is true)."
+    type: object
+    required: [op, path]
+    additionalProperties: false
+    properties:
+      op:
+        const: create
+        title: "Op"
+        description: "Operation type."
+      path:
+        type: string
+        minLength: 1
+        title: "Path"
+        description: "Absolute or relative path (relative = relative to CWD)."
+      content:
+        type: string
+        default: ""
+        title: "Content"
+        description: "File contents."
+      overwrite:
+        type: boolean
+        default: false
+        title: "Overwrite"
+        description: "If true, replace existing file; if false + existing file = abort."
+      mode:
+        type: string
+        pattern: "^0[0-7]{3}$"
+        title: "Mode"
+        description: "Octal mode string, e.g. '0644'."
+        examples: ["0644", "0755"]
+      when:
+        $ref: "#/definitions/when"
+
+  opDelete:
+    title: "Delete"
+    description: "Delete a file."
+    type: object
+    required: [op, path]
+    additionalProperties: false
+    properties:
+      op:
+        const: delete
+        title: "Op"
+        description: "Operation type."
+      path:
+        type: string
+        minLength: 1
+        title: "Path"
+        description: "Absolute or relative path (relative = relative to CWD)."
+      missing_ok:
+        type: boolean
+        default: true
+        title: "Missing OK"
+        description: "If true, skip when target is missing; if false, abort."
+      when:
+        $ref: "#/definitions/when"
+
+  opAppend:
+    title: "Append"
+    description: "Append content to an existing file."
+    type: object
+    required: [op, path, content]
+    additionalProperties: false
+    properties:
+      op:
+        const: append
+        title: "Op"
+        description: "Operation type."
+      path:
+        type: string
+        minLength: 1
+        title: "Path"
+        description: "Absolute or relative path (relative = relative to CWD). Target must exist."
+      content:
+        type: string
+        minLength: 1
+        title: "Content"
+        description: "Text to append."
+      newline_before:
+        type: boolean
+        default: true
+        title: "Newline Before"
+        description: "Prepend \\n if the file doesn't end with one."
+      when:
+        $ref: "#/definitions/when"
+
+  opReplace:
+    title: "Replace"
+    description: "Replace a match-language pattern in a file (line-scoped, every matching line)."
+    type: object
+    required: [op, path, match, replace]
+    additionalProperties: false
+    properties:
+      op:
+        const: replace
+        title: "Op"
+        description: "Operation type."
+      path:
+        type: string
+        minLength: 1
+        title: "Path"
+        description: "Absolute or relative path (relative = relative to CWD). Target must exist."
+      match:
+        type: string
+        minLength: 1
+        title: "Match"
+        description: "Pattern in the match language (space-separated tokens, one slot)."
+        examples: ["^ hl.gapsin _ = _ {:*:}", "^ cache_size _ = _ {:d:}"]
+      replace:
+        type: string
+        minLength: 1
+        title: "Replace"
+        description: "Text dropped into the slot."
+        examples: ["6", "512", "REDACTED"]
+      when:
+        $ref: "#/definitions/when"
+
+  opSymlink:
+    title: "Symlink"
+    description: "Create a symbolic link at target pointing to source."
+    type: object
+    required: [op, source, target]
+    additionalProperties: false
+    properties:
+      op:
+        const: symlink
+        title: "Op"
+        description: "Operation type."
+      source:
+        type: string
+        minLength: 1
+        title: "Source"
+        description: "Physical file/directory the symlink points to (absolute or relative to target's parent)."
+        examples: ["/usr/share/N0ctOS/bin/n0ct-pkg", "../bin/n0ct-pkg"]
+      target:
+        type: string
+        minLength: 1
+        title: "Target"
+        description: "Path where the symlink will be created."
+        examples: ["/usr/bin/n0ct-pkg", "/tmp/test/link"]
+      overwrite:
+        type: boolean
+        default: false
+        title: "Overwrite"
+        description: "If true, replace existing file/symlink/directory; if false, skip if target exists."
+      when:
+        $ref: "#/definitions/when"

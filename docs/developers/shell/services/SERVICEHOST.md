@@ -42,7 +42,8 @@ property list<QtObject> eagerServices: [
     Media,
     Notifications,
     SystemTray,
-    Animations
+    Animations,
+    SoundFX
 ]
 ```
 
@@ -54,10 +55,10 @@ On completion it logs two lines:
 
 ```text
 [N0ctOS Services] ServiceHost started
-[N0ctOS Services] Eager services: 15
+[N0ctOS Services] Eager services: 16
 ```
 
-where `15` is the current `eagerServices.length`.
+where `16` is the current `eagerServices.length`.
 
 ---
 
@@ -70,7 +71,7 @@ where `15` is the current `eagerServices.length`.
 | How to read | What does it do |
 | ----------- | --------------- |
 | `<host>.eagerServices` | Ordered list of singleton instances to create eagerly at startup. |
-| `<host>.eagerServices.length` | Number of eager services (currently `15`). Used only for the startup log. |
+| `<host>.eagerServices.length` | Number of eager services (currently `16`). Used only for the startup log. |
 
 ### Typical instantiation
 
@@ -101,7 +102,7 @@ Components normally should not need to reference `ServiceHost` at all.
 
 ### One place for eager startup
 
-All eagerly-started services are visible in a single 15-entry list, in declaration order.
+All eagerly-started services are visible in a single 16-entry list, in declaration order.
 
 ### Lazy by default
 
@@ -154,7 +155,7 @@ After launch, expect:
 
 ```text
 [N0ctOS Services] ServiceHost started
-[N0ctOS Services] Eager services: 15
+[N0ctOS Services] Eager services: 16
 ```
 
 A missing first line means the host was never instantiated. A wrong count means the list was edited.
@@ -171,6 +172,7 @@ property list<QtObject> eagerServices: [
     Config,
     // ...
     Animations,
+    SoundFX,
     MyNewService
 ]
 ```
@@ -201,7 +203,7 @@ Shell entry point
         ├── ConfigStore, Config, DateTime, Screens
         ├── Clipboard, Power, Audio, Battery
         ├── Brightness, Network, Bluetooth, Media
-        └── Notifications, SystemTray, Animations
+        └── Notifications, SystemTray, Animations, SoundFX
 ```
 
 There is one responsibility:

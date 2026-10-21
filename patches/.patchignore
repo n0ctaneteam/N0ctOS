@@ -1,0 +1,9 @@
+# .patchignore — patches to skip in batch mode and validation
+# One pattern per line. Supports glob patterns (fnmatch).
+# Lines starting with # are comments.
+
+# Branch-switch patches — applied explicitly by n0ct-branch-switch
+00-*.yaml
+
+# Schema file — not a patch
+schema.yaml

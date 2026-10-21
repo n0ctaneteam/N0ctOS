@@ -120,6 +120,14 @@ import qs.services
 | `Animations.get(path, fallback, scope)`           | Reads value. override + active profile. If missing, returns and writes `fallback` into the active profile. |
 | `Animations.set(path, value, scope, profileName)` | Creates or updates a value. Missing objects are created automatically.                                     |
 | `Animations.remove(path, scope, profileName)`     | Deletes a value from a profile or override.                                                                |
+| `Animations.getProfile(name)`                     | Returns a clone of the named profile. Empty `name` returns the active profile. `{}` when missing.         |
+| `Animations.setProfile(name, values)`             | Creates or replaces an entire profile. `values` must be an object. Returns `bool`.                         |
+| `Animations.removeProfile(name)`                  | Deletes a profile. Refuses to delete the last remaining profile. Reselects when active is removed.         |
+| `Animations.hasProfile(name)`                     | Returns `true` when the named profile exists.                                                              |
+| `Animations.getOverride(path, fallback)`          | Reads an override value. Missing values return `fallback` without writing anything.                        |
+| `Animations.setOverride(path, value)`             | Creates or updates an override. Shorthand for `set(path, value, "override")`.                              |
+| `Animations.removeOverride(path)`                 | Deletes an override. Shorthand for `remove(path, "override")`.                                             |
+| `Animations.ensureDefaults()`                     | Adds missing built-in profiles and fixes selection/overrides. Never overwrites existing profiles.          |
 | `Animations.isEnabled(component, fallback)`       | Convenience wrapper for `<component>.enabled`.                                                             |
 | `Animations.selectProfile(name)`                  | Changes the active global profile.                                                                         |
 | `Animations.resolve(name)`                        | Returns a profile with the current overrides merged into it.                                               |
@@ -131,11 +139,35 @@ import qs.services
 |`Animations.get("cxtmenu.fadeDuration", 500, "resolved")` |
 |`Animations.set("cxtmenu.fadeDuration", 250)`             |
 |`Animations.remove("cxtmenu.fadeDuration")`               |
+|`Animations.getProfile("full")`                           |
+|`Animations.setProfile("custom", {"cxtmenu": {"enabled": true}})` |
+|`Animations.removeProfile("custom")`                      |
+|`Animations.hasProfile("full")`                           |
+|`Animations.getOverride("cxtmenu.fadeDuration", 200)`     |
+|`Animations.setOverride("cxtmenu.fadeDuration", 100)`     |
+|`Animations.removeOverride("cxtmenu.fadeDuration")`       |
+|`Animations.ensureDefaults()`                             |
 |`Animations.isEnabled("cxtmenu", true)`                   |
 |`Animations.selectProfile("minimal")`                     |
 |`Animations.resolve("full")`                              |
 |`Animations.setProfileFrom("full", "myFull")`             |
 |`Animations.getStatus()`                                  |
+
+## Properties and defaults
+
+| How to read                  | What does it do                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `Animations.isReady`         | Whether `Config` is ready. Mirrors `Config.isReady`.                                                         |
+| `Animations.isWriting`       | Whether `Config` is currently writing. Mirrors `Config.isWriting`.                                           |
+| `Animations.isDirty`         | Whether `Config` has unsaved changes. Mirrors `Config.isDirty`.                                              |
+| `Animations.revision`        | Config revision counter. Mirrors `Config.revision`.                                                          |
+| `Animations.profile`         | Stored profile selection (`animations.profile`, defaults to `"full"`).                                       |
+| `Animations.effectiveProfileName` | Validated profile actually in use (`"full"` fallback, else first valid profile).                        |
+| `Animations.profiles`        | Clone of all valid (object-valued) profiles.                                                                 |
+| `Animations.overrides`       | Clone of the global override layer.                                                                          |
+| `Animations.activeProfile`   | Clone of the selected profile before overrides.                                                              |
+| `Animations.resolved`        | Clone of `activeProfile` deep-merged with `overrides`.                                                       |
+| `Animations.defaultProfiles` | Built-in defaults: `none` (all disabled), `minimal` (only `hyprland` enabled), `full` (all enabled).        |
 
 ## Scopes
 
@@ -228,6 +260,26 @@ n0ctos-animations
 | `qs ipc call n0ctos-animations get cxtmenu.fadeDuration 500 resolved` |
 | `qs ipc call n0ctos-animations set cxtmenu.fadeDuration 250 profile`  |
 | `qs ipc call n0ctos-animations remove cxtmenu.fadeDuration profile`   |
+
+## Profiles and overrides
+
+| How to call                        | What does it do                                                                                          |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `getProfile <name>`                | Returns the named profile as JSON. Empty string when missing or empty (unlike QML, no active-profile fallback). |
+| `setProfile <name> <json>`         | Creates or replaces an entire profile. `<json>` must be a valid JSON object.                             |
+| `removeProfile <name>`             | Deletes a profile. Fails for the last remaining profile. Reselects when the active profile is removed.   |
+| `getOverride <path>`               | Reads an override value as JSON. Empty string when missing. Never writes a fallback.                     |
+| `setOverride <path> <json>`        | Creates or updates an override. `<json>` must be valid JSON.                                             |
+| `removeOverride <path>`            | Deletes an override.                                                                                     |
+
+| Example                                                                     |
+| --------------------------------------------------------------------------- |
+| `qs ipc call n0ctos-animations getProfile full`                              |
+| `qs ipc call n0ctos-animations setProfile custom '{"cxtmenu":{"enabled":true}}'` |
+| `qs ipc call n0ctos-animations removeProfile custom`                         |
+| `qs ipc call n0ctos-animations getOverride cxtmenu.fadeDuration`             |
+| `qs ipc call n0ctos-animations setOverride cxtmenu.fadeDuration 100`         |
+| `qs ipc call n0ctos-animations removeOverride cxtmenu.fadeDuration`          |
 
 `<json>` must be valid JSON.
 
@@ -935,6 +987,99 @@ Inspect the complete service:
 
 ```bash
 qs ipc call n0ctos-animations getStatus
+```
+
+---
+
+## 5.10 Reading and replacing a whole profile
+
+Use `getProfile()` to inspect one profile and `setProfile()` to replace it:
+
+```qml
+// Read the full profile (clone; {} when missing).
+var full =
+    Animations.getProfile(
+        "full"
+    )
+
+// Replace or create a custom profile wholesale.
+Animations.setProfile(
+    "custom",
+    {
+        cxtmenu: {
+            enabled: true,
+            fadeDuration: 250
+        },
+        launcher: {
+            enabled: true
+        }
+    }
+)
+
+// Guard before deleting.
+if (Animations.hasProfile("custom")) {
+    Animations.removeProfile("custom")
+}
+```
+
+Notes:
+
+```text
+getProfile("") -> active profile
+setProfile()  -> name must be non-empty, values must be an object
+removeProfile() -> refuses to delete the last remaining profile
+```
+
+The same operations over IPC:
+
+```bash
+qs ipc call n0ctos-animations getProfile full
+
+qs ipc call n0ctos-animations setProfile \
+    custom \
+    '{"cxtmenu":{"enabled":true,"fadeDuration":250}}'
+
+qs ipc call n0ctos-animations removeProfile custom
+```
+
+---
+
+## 5.11 Reading and writing a single override
+
+Use the override helpers for values that should win over any profile without mutating it:
+
+```qml
+// Read only the override layer (no fallback materialization).
+var duration =
+    Animations.getOverride(
+        "cxtmenu.fadeDuration",
+        200
+    )
+
+// Pin a temporary value over the active profile.
+Animations.setOverride(
+    "cxtmenu.fadeDuration",
+    100
+)
+
+// Drop it to restore profile control.
+Animations.removeOverride(
+    "cxtmenu.fadeDuration"
+)
+```
+
+Unlike `get()`, a missing override never writes `fallback` into the profile.
+
+The same operations over IPC:
+
+```bash
+qs ipc call n0ctos-animations getOverride cxtmenu.fadeDuration
+
+qs ipc call n0ctos-animations setOverride \
+    cxtmenu.fadeDuration \
+    100
+
+qs ipc call n0ctos-animations removeOverride cxtmenu.fadeDuration
 ```
 
 ---

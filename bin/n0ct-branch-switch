@@ -1,0 +1,392 @@
+#!/usr/bin/env bash
+# n0ct-branch-switch — switch the N0ctOS branch and apply its branch patch
+#
+# Usage:
+#   n0ct-branch-switch              # interactive fzf picker
+#   n0ct-branch-switch BRANCH       # non-interactive (CAPS name, e.g. DEVELOPMENT)
+#   n0ct-branch-switch --list       # list available branches
+#   n0ct-branch-switch --help       # show help
+
+set -euo pipefail
+
+
+
+# ---- Config ----
+N0CTOS_ROOT="${N0CTOS_ROOT:-/usr/share/N0ctOS}"
+PATCHES_DIR="$N0CTOS_ROOT/patches"
+BRANCH_FILE="$N0CTOS_ROOT/local/branch.txt"
+
+# Branches: "CAPS_NAME:git-branch-name"
+# Order: displayed in fzf/menu in this order
+BRANCHES=(
+  "DEVELOPMENT:development"
+  "STABLE:stable"
+)
+
+# ---- Colors ----
+RED='\x1b[31;1m'
+GREEN='\x1b[32;1m'
+YELLOW='\x1b[33;1m'
+BLUE='\x1b[34;1m'
+RESET='\x1b[0m'
+
+# ---- Helpers ----
+notify() { printf '%b====== %s ======%b\n' "$BLUE" "$*" "$RESET"; }
+info()   { printf '  [info]  %s\n' "$*"; }
+warn()   { printf '%b  [warn]  %s%b\n' "$YELLOW" "$*" "$RESET" >&2; }
+die()    { printf '%b  [error] %s%b\n' "$RED" "$*" "$RESET" >&2; cleanup; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: n0ct-branch-switch [BRANCH] [options]
+
+Switch the N0ctOS branch and apply its branch patch.
+
+Arguments:
+  BRANCH          Target branch in CAPS (e.g. DEVELOPMENT, STABLE, LTS, SHELL_DEVELOPMENT)
+                  If omitted, interactive fzf picker is shown.
+
+Options:
+  --list          List available branches and exit
+  -h, --help      Show this help
+
+Environment:
+  N0CTOS_ROOT     Override N0ctOS root directory (default: /usr/share/N0ctOS)
+
+Behavior:
+  1. Validates the target branch and its 00-<BRANCH>.yaml patch (pre-flight, before any mutation)
+  2. Auto-stashes local changes if worktree is dirty
+  3. Checks out the target branch
+  4. Applies the branch patch via n0ct-patch (explicit file mode, no registration)
+  5. Writes local/branch.txt for n0ct-update
+  6. Optionally re-applies the stash (warns about breaking changes)
+EOF
+  exit 0
+}
+
+# ---- Colors ----
+RED='\x1b[31;1m'
+GREEN='\x1b[32;1m'
+YELLOW='\x1b[33;1m'
+BLUE='\x1b[34;1m'
+RESET='\x1b[0m'
+
+# ---- Sudo bootstrap (like n0ct-pkg) ----
+if [[ $EUID -ne 0 ]]; then
+  if sudo -n true 2>/dev/null; then
+    exec sudo "$0" "$@"
+  fi
+  printf '%b  [info]  Sudo required. Enter password:%b\n' "$BLUE" "$RESET" >&2
+  sudo -v || die "Sudo authentication failed"
+  exec sudo "$0" "$@"
+fi
+
+# ---- Sudo keepalive ----
+SUDO_PID=""
+cleanup() {
+  if [[ -n "$SUDO_PID" ]] && kill -0 "$SUDO_PID" 2>/dev/null; then
+    kill "$SUDO_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT INT TERM
+
+start_sudo_keepalive() {
+  local user="${SUDO_USER:-$(logname 2>/dev/null || echo "$USER")}"
+  if [[ "$user" != "root" ]]; then
+    (while kill -0 $$ 2>/dev/null; do sudo -n -u "$user" true; sleep 50; done) &
+    SUDO_PID=$!
+    info "Started sudo keepalive (pid $SUDO_PID) for user $user"
+  fi
+}
+
+# ---- Git helpers (run as invoking user to preserve ownership) ----
+RUN_AS_USER=()
+if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+  RUN_AS_USER=(runuser -u "$SUDO_USER" --)
+fi
+
+git_cmd() {
+  if [[ ${#RUN_AS_USER[@]} -gt 0 ]]; then
+    "${RUN_AS_USER[@]}" git -C "$N0CTOS_ROOT" "$@"
+  else
+    # Fallback: running as root directly (repo may become root-owned)
+    warn "Running git as root — repo files may become root-owned"
+    git -C "$N0CTOS_ROOT" "$@"
+  fi
+}
+
+# ---- Branch helpers ----
+branch_caps_to_git() {
+  local caps="$1"
+  for entry in "${BRANCHES[@]}"; do
+    local c="${entry%%:*}" g="${entry##*:}"
+    if [[ "$c" == "$caps" ]]; then
+      printf '%s' "$g"
+      return 0
+    fi
+  done
+  return 1
+}
+
+branch_git_to_caps() {
+  local git_branch="$1"
+  for entry in "${BRANCHES[@]}"; do
+    local c="${entry%%:*}" g="${entry##*:}"
+    if [[ "$g" == "$git_branch" ]]; then
+      printf '%s' "$c"
+      return 1
+    fi
+  done
+  return 0
+}
+
+list_branches() {
+  local current
+  current=$(git_cmd rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  for entry in "${BRANCHES[@]}"; do
+    local c="${entry%%:*}" g="${entry##*:}"
+    local marker=" "
+    [[ "$g" == "$current" ]] && marker="*"
+    printf '  %s %-20s (%s)\n' "$marker" "$c" "$g"
+  done
+}
+
+# ---- fzf picker ----
+pick_branch_fzf() {
+  local current
+  current=$(git_cmd rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  local choices=()
+  for entry in "${BRANCHES[@]}"; do
+    local c="${entry%%:*}" g="${entry##*:}"
+    local marker="  "
+    [[ "$g" == "$current" ]] && marker="* "
+    choices+=("${marker}${c}  ($g)")
+  done
+  printf '%s\n' "${choices[@]}" | fzf \
+    --height=40% \
+    --reverse \
+    --prompt='n0ct branch> ' \
+    --header="current: $current  (ESC to cancel)" \
+    --no-multi \
+    | sed 's/^.\{2\}//' | cut -d' ' -f1
+}
+
+# Fallback numbered menu if fzf not available
+pick_branch_menu() {
+  local current
+  current=$(git_cmd rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  echo "Current branch: $current"
+  echo "Available branches:"
+  local i=1
+  local caps_array=()
+  for entry in "${BRANCHES[@]}"; do
+    local c="${entry%%:*}" g="${entry##*:}"
+    local marker=" "
+    [[ "$g" == "$current" ]] && marker="*"
+    printf '  %d) %s %-20s (%s)\n' "$i" "$marker" "$c" "$g"
+    caps_array+=("$c")
+    ((i++))
+  done
+  echo
+  read -rp "Select branch [1-${#BRANCHES[@]}]: " choice
+  if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#BRANCHES[@]} )); then
+    printf '%s' "${caps_array[choice-1]}"
+    return 0
+  fi
+  die "Invalid selection"
+}
+
+# ---- Pre-flight checks ----
+preflight() {
+  local caps="$1"
+  local git_branch
+  git_branch=$(branch_caps_to_git "$caps") || die "Unknown branch: $caps"
+
+  info "Target: $caps -> $git_branch"
+
+  # 1. Fetch origin branch
+  info "Fetching origin/$git_branch..."
+  git_cmd fetch origin "$git_branch" --quiet || \
+    die "Failed to fetch branch '$git_branch' from origin"
+
+  # 2. Verify branch exists on origin
+  git_cmd rev-parse --verify "origin/$git_branch" >/dev/null || \
+    die "Branch '$git_branch' not found on origin"
+
+  # 3. Verify patch exists on target branch BEFORE checkout
+  local patch_path="patches/00-$caps.yaml"
+  info "Checking for branch patch: $patch_path on origin/$git_branch..."
+  if ! git_cmd cat-file -e "origin/$git_branch:$patch_path" 2>/dev/null; then
+    die "Branch '$caps' has no patch file: $patch_path on origin/$git_branch"
+  fi
+  info "Patch found: $patch_path"
+
+  # 4. Verify target branch's n0ct-patch exists
+  if ! git_cmd cat-file -e "origin/$git_branch:bin/n0ct-patch" 2>/dev/null; then
+    warn "Target branch '$git_branch' has no bin/n0ct-patch — proceeding anyway"
+  fi
+
+  echo "$git_branch"
+}
+
+# ---- Apply branch patch ----
+apply_branch_patch() {
+  local caps="$1"
+  local patch_file="$PATCHES_DIR/00-$caps.yaml"
+
+  notify "Applying branch patch: $patch_file"
+  if [[ -x "$N0CTOS_ROOT/bin/n0ct-patch" ]]; then
+    "$N0CTOS_ROOT/bin/n0ct-patch" "$patch_file"
+  else
+    die "n0ct-patch not found at $N0CTOS_ROOT/bin/n0ct-patch"
+  fi
+}
+
+# ---- Stash handling ----
+stash_changes() {
+  local from_branch to_branch
+  from_branch=$(git_cmd rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  to_branch="$1"
+
+  local dirty
+  dirty=$(git_cmd status --porcelain)
+  if [[ -n "$dirty" ]]; then
+    warn "Worktree has uncommitted changes — auto-stashing..."
+    local msg="n0ct-branch-switch: $from_branch -> $2"
+    git_cmd stash push -u -m "$msg" || die "Failed to stash changes"
+    echo "stashed"
+  else
+    echo ""
+  fi
+}
+
+restore_stash() {
+  local stashed="$1"
+  if [[ -z "$stashed" ]]; then
+    return
+  fi
+
+  warn "You have a stash from the previous branch."
+  warn "Reapplying stashed changes onto the new branch MAY CONFLICT or BREAK THINGS"
+  warn "(branch config files, package lists, etc. may differ)."
+  read -rp "Reapply stash? [y/N]: " yn
+  if [[ "$yn" =~ ^[Yy]$ ]]; then
+    info "Reapplying stash..."
+    if git_cmd stash pop; then
+      info "Stash reapplied successfully."
+    else
+      warn "Stash application had conflicts!"
+      warn "Resolve manually: git status, then git add ... && git commit"
+      warn "Stash preserved — recover with: git stash list / git stash pop"
+    fi
+  else
+    info "Stash kept. Recover later with: git stash list / git stash pop"
+  fi
+}
+
+# ---- Main ----
+main() {
+  local target_caps=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --list)
+        list_branches
+        exit 0
+        ;;
+      -h|--help)
+        usage
+        ;;
+      -*)
+        die "Unknown option: $1"
+        ;;
+      *)
+        if [[ -z "$target_caps" ]]; then
+          target_caps="${1^^}"  # uppercase
+        else
+          die "Unknown argument: $1"
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  # Determine target branch
+  if [[ -z "$target_caps" ]]; then
+    if command -v fzf >/dev/null; then
+      target_caps=$(pick_branch_fzf)
+      [[ -z "$target_caps" ]] && die "Cancelled"
+    else
+      target_caps=$(pick_branch_menu)
+    fi
+  fi
+
+  # Validate branch
+  local target_git
+  target_git=$(branch_caps_to_git "$target_caps") || die "Unknown branch: $target_caps"
+
+  notify "Switching to branch: $target_caps ($target_git)"
+
+  # Pre-flight (before ANY mutation)
+  preflight "$target_caps"
+
+  # Auto-stash if dirty
+  local stashed
+  stashed=$(stash_changes "$target_caps")
+
+  # Checkout target branch
+  notify "Checking out branch: $target_git"
+  if ! git_cmd checkout "$target_git"; then
+    die "Failed to checkout branch '$target_git'"
+  fi
+
+  # Apply branch patch
+  apply_branch_patch "$target_git"
+
+  # Write branch.txt for n0ct-update
+  local target_git_branch
+  target_git=$(git_cmd rev-parse --abbrev-ref HEAD)
+  printf '%s\n' "$target_git" > "$BRANCH_FILE"
+  # chown to invoking user so they can edit it later
+  if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+    chown "$SUDO_USER":"${SUDO_GID:-$(id -g "$SUDO_USER")}" "$BRANCH_FILE" 2>/dev/null || true
+  fi
+  info "Wrote branch.txt: $target_git"
+
+  # Offer to restore stash
+  if [[ -n "$stashed" ]]; then
+    restore_stash "$stashed"
+  fi
+
+  notify "Branch switch complete: $target_caps"
+}
+
+usage() {
+  cat <<'EOF'
+Usage: n0ct-branch-switch [BRANCH] [options]
+
+Switch the N0ctOS branch and apply its branch patch.
+
+Arguments:
+  BRANCH          Target branch in CAPS (e.g. DEVELOPMENT, STABLE, LTS, SHELL_DEVELOPMENT)
+                  If omitted, interactive fzf picker is shown.
+
+Options:
+  --list          List available branches and exit
+  -h, --help      Show this help
+
+Environment:
+  N0CTOS_ROOT     Override N0ctOS root directory (default: /usr/share/N0ctOS)
+
+Behavior:
+  1. Validates the target branch and its 00-<BRANCH>.yaml patch (pre-flight, before any mutation)
+  2. Auto-stashes local changes if worktree is dirty
+  3. Checks out the target branch
+  4. Applies the branch patch via n0ct-patch (explicit file mode, no registration)
+  5. Writes local/branch.txt for n0ct-update
+  6. Optionally re-applies the stash (warns about breaking changes)
+EOF
+  exit 0
+}
+
+main "$@"

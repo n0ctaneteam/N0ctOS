@@ -81,8 +81,7 @@ packages:
 - Names are plain package names, **no version pins**.
 - Removes run before installs, always.
 - No `when:` here — the section always applies when present.
-- Backend: `paru -Rs --noconfirm` then `paru -Sy --needed --noconfirm`
-  (see `PKG_ADD_BASE` / `PKG_REMOVE_BASE` in `bin/n0ct-patch`).
+- Backend: `n0ct-pkg` (handles repo/AUR detection, retry, sudo, privilege dropping) — see `PATCHING.md` §7.
 - Batch mode merges all selected files' lists (last-op-wins per
   package) into one remove + one install — see `PATCHING.md` §7.
 
@@ -125,7 +124,7 @@ file op`).
 
 | Field | Required | Meaning |
 |---|---|---|
-| `op` | yes | `create`, `delete`, `append`, `replace` |
+| `op` | yes | `create`, `delete`, `append`, `replace`, `symlink` |
 | `path` | yes | Absolute or relative path (relative = relative to CWD) |
 | `when` | no | Skip unless this shell passes (see §6) |
 
@@ -198,6 +197,30 @@ line is updated; **only the slot text** is replaced, everything around
 it (whitespace, punctuation, `^`-captured text) is preserved verbatim;
 **zero matches aborts** (dry-run prints `would ABORT` and continues
 previewing). Need two changes? Write two `replace` ops.
+
+### `symlink`
+
+```yaml
+- op: symlink
+  source: /usr/share/N0ctOS/bin/n0ct-pkg
+  target: /usr/bin/n0ct-pkg
+  overwrite: false        # optional, default false
+```
+
+Creates a symbolic link at `target` pointing to `source`.
+
+| Field | Required | Default | Meaning |
+|---|---|---|---|
+| `source` | yes | — | Physical file/directory the symlink points to (absolute or relative to target's parent) |
+| `target` | yes | — | Path where the symlink will be created |
+| `overwrite` | no | `false` | `true` replaces existing file/symlink/dir; `false` skips if target exists |
+
+Behaviour:
+- Creates parent directories of `target` automatically.
+- If `source` is a relative path, it is resolved relative to `target`'s parent directory.
+- If `target` exists and `overwrite: false` (default): skips with a log message.
+- If `target` exists and `overwrite: true`: removes existing file/symlink/directory and creates the new symlink.
+- Dry-run prints what would be done without creating the symlink.
 
 ---
 
@@ -322,16 +345,31 @@ print `→ real run would ABORT` and continue.
 ## 11. CLI + privileges
 
 ```
-n0ct-patch patch.yaml [--dry-run]
-n0ct-patch --apply-missing [--patches-dir D] [--applied-file F] [--dry-run]
-n0ct-patch --all [same batch options]
+n0ct-patch [patch.yaml...] [-n] [-c] [-m] [-a] [-p DIR] [-d DIR] [-s FILE] [-l FILE] [--no-root-check]
 ```
 
+| Short | Long | Description |
+|---|---|---|
+| `-n` | `--dry-run` | Preview changes without applying |
+| `-c` | `--check` | List pending patches (exit 0=none, 1=pending, 2=error) |
+| `-m` | `--apply-missing` | Apply unapplied patches (default if no args) |
+| `-a` | `--all` | Apply all patches, ignore applied file |
+| `-p` | `--patches-dir` | Directory to scan for patches (default: `/usr/share/N0ctOS/patches`) |
+| `-d` | `--dir` | Alias for `--patches-dir` |
+| `-s` | `--system-file` | System-wide applied list (default: `/usr/share/N0ctOS/local/patches-applied.txt`) |
+| `-l` | `--local-file` | User-local applied list (default: `~/.config/N0ctOS/data/patches-applied.txt`) |
+| | `--no-root-check` | Testing: allow real runs without root |
+
 - `--patches-dir` default `/usr/share/N0ctOS/patches`;
-  `--applied-file` default `~/.config/N0ctOS/data/patches-applied.txt`.
+  `--system-file` default `/usr/share/N0ctOS/local/patches-applied.txt`;
+  `--local-file` default `~/.config/N0ctOS/data/patches-applied.txt`
+  (resolved for the invoking user under `sudo`, but owned `root:root
+  0444` — see `PATCHING.md` §8).
 - **Root required for real runs**: without root (and without
-  `--dry-run`) the runner refuses immediately — re-run with `sudo`.
-  `--dry-run` previews need no privileges.
+  `--dry-run`/`--check`) the runner refuses immediately — it will prompt
+  for sudo internally (like `n0ct-pkg`). `--dry-run` and `--check`
+  previews need no privileges.
+- **Default behavior**: running `n0ct-patch` with no arguments is equivalent to `n0ct-patch --apply-missing`.
 - `--no-root-check`: testing-only hatch for real runs without root
   (used by `examples/verify.sh`, which only touches the repo + `/tmp`).
 - Exit `0` ok / nothing-to-do · `1` `FAILED:` · `2` CLI misuse

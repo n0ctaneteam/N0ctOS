@@ -1,0 +1,267 @@
+#!/usr/bin/env bash
+# n0ct-update — system update with patch application
+#
+# Usage:
+#   n0ct-update              # check for updates, prompt to install
+#   n0ct-update --check      # check only, exit 0/1
+#   n0ct-update --update     # apply updates without prompt
+#   n0ct-update --help       # show help
+
+set -euo pipefail
+
+# ---- Config ----
+N0CTOS_ROOT="/usr/share/N0ctOS"
+BRANCH_FILE="$N0CTOS_ROOT/local/branch.txt"
+RETRY_MAX=2
+SUDO_KEEPALIVE_INTERVAL=50  # seconds
+
+# ---- Colors ----
+RED='\x1b[31;1m'
+GREEN='\x1b[32;1m'
+YELLOW='\x1b[33;1m'
+BLUE='\x1b[34;1m'
+RESET='\x1b[0m'
+
+# ---- Helpers ----
+notify() { printf '%b====== %s ======%b\n' "$BLUE" "$*" "$RESET"; }
+info()   { printf '  [info]  %s\n' "$*"; }
+warn()   { printf '%b  [warn]  %s%b\n' "$YELLOW" "$*" "$RESET" >&2; }
+die()    { printf '%b  [error] %s%b\n' "$RED" "$*" "$RESET" >&2; cleanup; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: n0ct-update [options]
+
+Options:
+  --check       Check for updates only (exit 0=clean, 1=updates available)
+  --update      Apply updates without prompting
+  --dry-run     Preview what would be done (implies --check)
+  --no-sudo     Run without sudo (for testing)
+  -h, --help    Show this help
+
+Environment:
+  N0CTOS_ROOT   Override N0ctOS root directory (default: /usr/share/N0ctOS)
+EOF
+  exit 0
+}
+
+# ---- Sudo keepalive ----
+SUDO_PID=""
+cleanup() {
+  if [[ -n "$SUDO_PID" ]] && kill -0 "$SUDO_PID" 2>/dev/null; then
+    kill "$SUDO_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT INT TERM
+
+start_sudo_keepalive() {
+  if [[ $EUID -eq 0 ]]; then
+    # Already root, keep sudo timestamp fresh for the invoking user
+    local user="${SUDO_USER:-$(logname 2>/dev/null || echo "$USER")}"
+    if [[ "$user" != "root" ]]; then
+      (while kill -0 $$ 2>/dev/null; do sudo -n -u "$user" true; sleep "$SUDO_KEEPALIVE_INTERVAL"; done) &
+      SUDO_PID=$!
+      info "Started sudo keepalive (pid $SUDO_PID) for user $user"
+    fi
+  else
+    # Not root, just validate sudo upfront
+    sudo -v || die "Sudo authentication failed"
+    # Start background keepalive
+    (while kill -0 $$ 2>/dev/null; do sudo -n -v; sleep "$SUDO_KEEPALIVE_INTERVAL"; done) &
+    SUDO_PID=$!
+    info "Started sudo keepalive (pid $SUDO_PID)"
+  fi
+}
+
+run_with_retry() {
+  local phase="$1"
+  shift
+  local cmd=("$@")
+  local attempt=0
+  while (( attempt < RETRY_MAX )); do
+    info "Running: ${cmd[*]}"
+    if "${cmd[@]}"; then
+      return 0
+    fi
+    ((attempt++))
+    if (( attempt < RETRY_MAX )); then
+      warn "Phase '$phase' failed (attempt $attempt/$RETRY_MAX), retrying in 5s..."
+      sleep 5
+    fi
+  done
+  die "Phase '$phase' failed after $RETRY_MAX attempts: ${cmd[*]}"
+}
+
+sudo_run() {
+  if [[ $EUID -eq 0 ]]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+# ---- Branch detection ----
+get_branch() {
+  if [[ -f "$BRANCH_FILE" ]]; then
+    local branch
+    branch=$(cat "$BRANCH_FILE" | tr -d '[:space:]')
+    if [[ -n "$branch" ]]; then
+      printf '%s' "$branch"
+      return 0
+    fi
+  fi
+  # Fallback to current git branch
+  if [[ -d "$N0CTOS_ROOT/.git" ]]; then
+    local branch
+    branch=$(git -C "$N0CTOS_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)
+    if [[ -n "$branch" && "$branch" != "HEAD" ]]; then
+      warn "branch.txt not found, using git branch: $branch"
+      printf '%s' "$branch"
+      return 0
+    fi
+  fi
+  die "Could not determine branch (missing $BRANCH_FILE and not in a git repo)"
+}
+
+# ---- Phase 1: Git sync ----
+phase_git_sync() {
+  notify "Syncing repository"
+  local branch
+  branch=$(get_branch)
+  info "Branch: $branch"
+
+  # Verify branch exists on origin
+  git -C "$N0CTOS_ROOT" fetch origin "$branch" --quiet || \
+    die "Failed to fetch branch '$branch' from origin"
+
+  # Pull with autostash
+  if ! git -C "$N0CTOS_ROOT" pull --rebase --autostash origin "$branch"; then
+    warn "Git pull failed. Local changes may conflict."
+    info "Try: cd $N0CTOS_ROOT && git stash list"
+    return 1
+  fi
+  info "Repository synced to origin/$branch"
+}
+
+# ---- Phase 2: System packages ----
+phase_packages() {
+  notify "Updating system packages"
+  run_with_retry "packages" sudo_run n0ct-pkg update
+}
+
+# ---- Phase 3: Patches ----
+phase_patches() {
+  notify "Applying patches"
+  run_with_retry "patches" sudo_run n0ct-patch --apply-missing
+}
+
+# ---- Check for updates ----
+check_updates() {
+  local dry_run="${1:-false}"
+  local updates_found=0
+
+  # Check git
+  local branch
+  branch=$(get_branch)
+  info "Checking branch: $branch"
+
+  git -C "$N0CTOS_ROOT" fetch origin "$branch" --quiet 2>/dev/null || {
+    warn "Could not fetch from origin"
+    return 1
+  }
+
+  local behind
+  behind=$(git -C "$N0CTOS_ROOT" rev-list --count HEAD..origin/"$branch" 2>/dev/null || echo 0)
+  if (( behind > 0 )); then
+    info "Git: $behind commit(s) behind origin/$branch"
+    updates_found=1
+  fi
+
+  # Check patches
+  if [[ -x "$N0CTOS_ROOT/bin/n0ct-patch" ]]; then
+    local check_output
+    check_output=$("$N0CTOS_ROOT/bin/n0ct-patch" --check 2>&1) || true
+    if echo "$check_output" | grep -q "Pending patches"; then
+      info "Patches: pending patches found"
+      updates_found=1
+    elif echo "$check_output" | grep -q "No pending patches"; then
+      info "Patches: up to date"
+    else
+      info "Patches: $check_output"
+    fi
+  fi
+
+  # Check system packages
+  if command -v n0ct-pkg >/dev/null; then
+    local pkg_updates
+    pkg_updates=$(n0ct-pkg update 2>&1 | grep -c "upgradable" || true)
+    if (( pkg_updates > 0 )); then
+      info "Packages: $pkg_updates upgradable package(s)"
+      updates_found=1
+    else
+      info "Packages: up to date"
+    fi
+  fi
+
+  if (( updates_found )); then
+    if [[ "$dry_run" == "true" ]]; then
+      printf '\n%sUpdates available.%s\n' "$GREEN" "$RESET"
+      return 0
+    fi
+    return 1  # updates available
+  else
+    printf '\n%sNo updates found.%s\n' "$GREEN" "$RESET"
+    return 0  # no updates
+  fi
+}
+
+# ---- Main ----
+main() {
+  local do_check=false
+  local do_update=false
+  local do_dry_run=false
+  local no_sudo=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --check) do_check=true ;;
+      --update) do_update=true ;;
+      --dry-run) do_check=true; do_dry_run=true ;;
+      --no-sudo) no_sudo=true ;;
+      -h|--help) usage ;;
+      *) die "Unknown option: $1" ;;
+    esac
+    shift
+  done
+
+  # Default behavior: check then prompt
+  if [[ "$do_check" == "false" && "$do_update" == "false" ]]; then
+    do_check=true
+  fi
+
+  # Dry-run implies check
+  if [[ "$do_dry_run" == "true" ]]; then
+    do_check=true
+  fi
+
+  cd "$N0CTOS_ROOT" || die "N0CTOS_ROOT not found: $N0CTOS_ROOT"
+
+  if [[ "$do_check" == "true" ]]; then
+    if ! check_updates "$do_dry_run"; then
+      [[ "$do_dry_run" == "true" ]] && exit 1 || exit 0
+    fi
+    [[ "$do_dry_run" == "true" ]] && exit 1 || exit 0
+  fi
+
+  # Full update mode
+  notify "Starting N0ctOS update"
+  [[ "$no_sudo" == "false" ]] && start_sudo_keepalive
+
+  phase_git_sync
+  phase_packages
+  phase_patches
+
+  notify "Update complete"
+}
+
+main "$@"

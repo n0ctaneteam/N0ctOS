@@ -103,7 +103,7 @@ import qs.services
 
 | How to read | What does it do |
 | ----------- | --------------- |
-| `Screens.ready` | `Config.isReady`. `false` until configuration is loaded. |
+| `Screens.isReady` | `Config.isReady`. `false` until configuration is loaded. |
 | `Screens.names` | Remembered priority order, copy of `_screenNames`. Disconnected names are kept. |
 | `Screens.screens` | Live `Quickshell.screens` array of `ShellScreen` objects. |
 | `Screens.connectedNames` | Names of currently connected screens, copy of `_connectedNames`. |

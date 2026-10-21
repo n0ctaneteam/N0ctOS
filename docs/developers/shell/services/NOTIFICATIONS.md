@@ -116,7 +116,7 @@ Popups follow this order:
 
 ### Game Mode
 
-When `Config.isGameMode` is `true`:
+When `Config.get("isGameMode")` is `true` (read via `Notifications.isGameMode`):
 
 ```text
 notification received  → yes
@@ -203,7 +203,7 @@ import qs.services
 | `Notifications.unseenCount`                     | Shell-level counter since the hub was last marked read.                                             |
 | `Notifications.hasUnseen`                       | Convenience wrapper for `unseenCount > 0`.                                                          |
 | `Notifications.isDnd`                           | Current Do Not Disturb state.                                                                       |
-| `Notifications.isGameMode`                      | Read-only view of `Config.isGameMode`.                                                              |
+| `Notifications.isGameMode`                      | Read-only view of `Config.get("isGameMode")`.                                                       |
 | `Notifications.groupingEnabled`                 | Whether grouped views are built from history.                                                       |
 | `Notifications.historySize`                     | Maximum number of stored history entries, `1` to `5000`.                                            |
 | `Notifications.lowPopupTimeout`                 | Popup lifetime for low urgency in seconds.                                                          |
@@ -242,7 +242,7 @@ import qs.services
 |`Notifications.invokeDefaultAction(42)`                               |`true`, `default` action or first action runs                 |
 |`Notifications.reply(42, "Thanks!")`                                  |`true` when inline reply is supported                         |
 |`Notifications.removePopup(42)`                                       |`true`, popup removed, notification stays alive               |
-|`Notifications.groupsData("apps")`                                    |`{appName: [...]}` grouped history object                     |
+|`Notifications.groupsData("apps")`                                    |`[{key, label, count, items}]` grouped history array (see §6.29)|
 |`Notifications.setPopupTimeout("low", 3)`                             |`3`, low-urgency timeout becomes 3 s                          |
 
 ## Three models
@@ -648,10 +648,10 @@ Game Mode can suppress all popups while notifications continue being received an
 Notifications.isGameMode
 ```
 
-is a read-only view of:
+is a read-only view of `Config.get("isGameMode")` (via `Notifications.isGameMode`):
 
 ```text
-Config.isGameMode
+Config.get("isGameMode")
 ```
 
 ### Unseen counter
@@ -898,10 +898,10 @@ A future `Sfx.qml` service can own notification sound behavior.
 
 ### Game Mode is external
 
-Notifications reads:
+Notifications reads (via `Notifications.isGameMode`):
 
 ```qml
-Config.isGameMode
+Config.get("isGameMode")
 ```
 
 but does not own that state.

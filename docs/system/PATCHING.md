@@ -43,9 +43,9 @@ code**. Readable, diffable, safe to dry-run, free of escaping hell.
 | Demos | `examples/` | Fixtures + patches + `verify.sh` proving all of this works |
 
 `bin/n0ct-patch` is the whole backend: match compiler
-(`compile_pattern`), four file ops (`op_create/delete/append/replace`),
+(`compile_pattern`), five file ops (`op_create/delete/append/replace/symlink`),
 command runner (`run_command`), package hook (`apply_packages` +
-`merge_packages`), applied-file tracking (`load_applied` /
+`merge_packages` via `n0ct-pkg`), applied-file tracking (`load_applied` /
 `save_applied`), batch driver (`select_patches` / `apply_batch`).
 
 ## 4. Core concepts
@@ -83,7 +83,8 @@ n0ct-patch --all [same options]                                  # full batch
 
 A positional patch file cannot be combined with a batch flag
 (argparse error, exit 2). Exit codes: `0` success (including
-"nothing to do"), `1` on any `FAILED:`, `2` on CLI misuse.
+"nothing to do"), `1` on any `FAILED:`, `2` on CLI misuse,
+`130` on `Ctrl+C` (child group killed, partial batch stays as-is).
 
 ## 6. Batch pipeline
 
@@ -131,20 +132,21 @@ Worked example — `1.2.0: +a+b+c −d−e`, `1.2.1: +e −a`, `1.2.2: +d −c`:
 
 Result: `remove [a c]`, `add [b d e]`.
 
-**Execution, always remove-first** (dependency-safe), via two
-configurable base commands — package names are appended, no shell
-involved:
+**Execution, always remove-first** (dependency-safe), via `n0ct-pkg`:
 
 ```python
-PKG_ADD_BASE    = ["paru", "-Sy", "--needed", "--noconfirm"]
-PKG_REMOVE_BASE = ["paru", "-Rs", "--noconfirm"]
-PKG_TIMEOUT     = 300  # seconds per call
+# n0ct-pkg handles all package operations internally:
+# - Repository package installation: pacman -Sy --needed --noconfirm
+# - AUR package installation: paru -Sy --needed --noconfirm --skipreview
+# - Package removal: pacman -Rs --noconfirm
+# - Full system update: pacman -Syu + paru -Syu
+# - Retry logic, sudo handling, and AUR detection built-in
 ```
 
-Swap managers by editing those two lists. Non-interactive flags are
-mandatory — a patch must never hang on a prompt. The `packages`
-section takes no `when:`; the merged pass is unconditional. Non-zero
-exit aborts (single mode: the patch; batch: everything, unregistered).
+Package operations are delegated to `n0ct-pkg` which handles retry logic,
+sudo privilege management, AUR detection, and privilege dropping internally.
+The `packages` section takes no `when:`; the merged pass is unconditional.
+Non-zero exit aborts (single mode: the patch; batch: everything, unregistered).
 
 ## 8. Record subsystem
 
@@ -158,17 +160,28 @@ exit aborts (single mode: the patch; batch: everything, unregistered).
 Blank lines and `#` comments are ignored. Writes are atomic
 (temp file + rename) followed by `chmod 444` — the file is read-only
 at rest, so updating it needs sudo, which matches the root-owned
-update flow. The parent dir is created `755` on demand. A legacy JSON
+update flow. The parent data dir is created `755` on demand. A legacy JSON
 list (`["a.yaml", …]`) is still accepted on *read* (migration); writes
-are always plain text. `PermissionError` on read or write becomes a
+are always plain text. Any `OSError` on read or write becomes a
 clean `FAILED:` (hint: run with sudo) instead of a traceback.
+
+**Location vs ownership.** The default path is resolved for the
+*invoking* user (`SUDO_USER`/`SUDO_UID` when running under `sudo`), so
+`sudo n0ct-patch` records to `/home/<user>/.config/N0ctOS/data/…`,
+never `/root/.config/…`. The file itself stays owned by system/root
+(`root:root 0444`, data dir `root:root 0755`) — readonly for users;
+only the data dir and the file are ever chown'd, never `$HOME` or the
+rest of the user's config tree.
 
 ## 9. Conditions (`when:`)
 
 Any file op or command block may carry `when:` — a shell command or a
 list (all must exit 0). Exit 0 = run, non-zero = skip with a
 `[skip] <id or path>` log line, patch continues. `when` runs through
-`sh -c` with captured output.
+`sh -c` with captured output, `stdin` closed, a `30 s` timeout
+(`WHEN_TIMEOUT`), and its own process group: a hanging condition is
+treated as fail (skip), never as an abort — but `Ctrl+C` still aborts
+the whole run after killing the group.
 
 The one dry-run exception: **`when` executes even in `--dry-run`**,
 and its pass/fail is printed. The runner cannot know what *would* run
@@ -179,12 +192,17 @@ during a preview.
 ## 10. Execution model
 
 Strictly sequential, single-threaded. Shell steps (`pre`, `commands`,
-`post`, `when`) run via `sh -c` with captured stdout/stderr, a
-per-block `timeout` (default 300 s), and abort on non-zero exit
-(stderr is included in the `FAILED:` message). Package steps run as
-argv (no shell) with `PKG_TIMEOUT`. File writes are direct
+`post`, `when`) run via `sh -c` with captured stdout/stderr, closed
+`stdin`, a per-block `timeout` (default 300 s, `when:` fixed 30 s),
+each in its own process group so timeout/`Ctrl+C` kills the group;
+shell failures abort on non-zero exit (stderr is included in the
+`FAILED:` message). Package steps run as argv (no shell) with
+`PKG_TIMEOUT`, inheriting the terminal (see §7). File writes are direct
 (`Path.write_text`, append mode) — a crash mid-write can truncate;
-atomic write-temp-then-rename is on the wishlist, not implemented.
+atomic write-temp-then-rename is on the wishlist for file ops (the
+record file in §8 already has it). `Ctrl+C` anywhere kills the active
+child group and exits `130` with one clean line, no traceback — nothing
+is registered beyond the last `[register]`.
 
 ## 11. Error handling — what aborts, what registers
 
@@ -200,9 +218,12 @@ Anything in this list aborts the run immediately with `FAILED:`:
 - unknown file `op`
 - any command/`pre`/`post` exiting non-zero or timing out
 - any package step exiting non-zero or timing out
-- unreadable/unwritable record file, missing patches dir
+- unreadable/unwritable record file (`OSError` → clean `FAILED:`),
+  missing patches dir
 - running a real (non-`--dry-run`) apply without root — refused up
   front, before anything runs (re-run with `sudo`)
+- `Ctrl+C` is not a `FAILED:` — it kills the child group and exits
+  `130` (see §10)
 
 Registration consequences (batch mode):
 
@@ -212,9 +233,14 @@ Registration consequences (batch mode):
 | During file *i* of *n* | files before *i* stay recorded; *i* and later don't |
 
 There is deliberately no rollback: use `pre` to back up, `post` to
-verify (`curl -sf …/health`), and author patches to be re-runnable
-(`when` guards, `overwrite: true` creates, default `missing_ok`
-deletes) so a failed run can be retried after fixing the cause.
+verify (`curl -sf …/health` where a service exists, otherwise a
+file check like `grep -qF 'marker' …`), and author patches to be
+re-runnable (`when` guards on one-shot ops — especially `append`,
+which duplicates blindly without one; `overwrite: true` creates;
+default `missing_ok` deletes) so a failed run can be retried after
+fixing the cause. A patch whose `post` cannot pass in the target
+environment never registers and re-applies from scratch every run —
+keep `post` green where the patch is expected to converge.
 
 ## 12. Dry-run contract
 
@@ -239,9 +265,12 @@ moved. If you ever suspect a leak, that script is the place to prove it.
 - Patches land via the normal update flow (`update.sh` git-pulls the
   branch); converging the system is then a batch run against
   `/usr/share/N0ctOS/patches`.
-- **Run real applies as root.** The runner checks `geteuid() == 0`
-  first thing and dies immediately otherwise — half-privileged runs
-  that fail midway are worse than no run. `--dry-run` previews need no
+- **Run real applies as root, via `sudo` from a regular user.**
+  The runner checks `geteuid() == 0` first thing and dies immediately
+  otherwise — half-privileged runs that fail midway are worse than no
+  run. `sudo` (not a direct root login) is required: package steps
+  drop to `$SUDO_USER` because `paru` refuses to run as root, and the
+  record path in §8 resolves from it. `--dry-run` previews need no
   privileges; `--no-root-check` is a testing-only hatch for real runs
   without root (used by `examples/verify.sh`, which only touches the
   repo and `/tmp`).

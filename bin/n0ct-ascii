@@ -1,9 +1,204 @@
-#!/usr/bin/env bash
 
-echo "███╗   ██╗ ██████╗  ██████╗████████╗ ██████╗ ███████╗";
-echo "████╗  ██║██╔═████╗██╔════╝╚══██╔══╝██╔═══██╗██╔════╝";
-echo "██╔██╗ ██║██║██╔██║██║        ██║   ██║   ██║███████╗";
-echo "██║╚██╗██║████╔╝██║██║        ██║   ██║   ██║╚════██║";
-echo "██║ ╚████║╚██████╔╝╚██████╗   ██║   ╚██████╔╝███████║";
-echo "╚═╝  ╚═══╝ ╚═════╝  ╚═════╝   ╚═╝    ╚═════╝ ╚══════╝";
-echo "                                                     ";
+#!/usr/bin/env bash
+# N0ctOS ASCII banner
+# Requires: Bash 4+, figlet
+
+set -u
+
+H=center
+V=center
+S=normal
+C=cyber
+CLEAR=1
+
+usage() {
+  cat <<'EOF'
+Usage: n0ct-ascii.sh [OPTIONS]
+
+  -H, --horizontal  left|center|right
+  -V, --vertical    up|center|down
+  -S, --size        small|normal|large
+  -C, --colors      cyber|neon|aurora|ocean|fire|matrix|mono|none
+  -k, --no-clear    Keep existing terminal contents
+  -h, --help        Show help
+
+Examples:
+  n0ct-ascii.sh
+  n0ct-ascii.sh -H right -V up -S large -C ocean
+  n0ct-ascii.sh -S small -C matrix
+EOF
+}
+
+die() {
+  printf 'n0ct-ascii: %s\n' "$*" >&2
+  exit 2
+}
+
+while (($#)); do
+  case "$1" in
+    -H|--horizontal|-V|--vertical|-S|--size|-C|--colors)
+      (($# >= 2)) || die "Missing value for $1"
+      option=$1
+      value=$2
+      shift 2
+
+      case "$option" in
+        -H|--horizontal) H=$value ;;
+        -V|--vertical) V=$value ;;
+        -S|--size) S=$value ;;
+        -C|--colors) C=$value ;;
+      esac
+      ;;
+    --horizontal=*) H=${1#*=}; shift ;;
+    --vertical=*) V=${1#*=}; shift ;;
+    --size=*) S=${1#*=}; shift ;;
+    --colors=*) C=${1#*=}; shift ;;
+    -k|--no-clear) CLEAR=0; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "Unknown option: $1" ;;
+  esac
+done
+
+case "$H" in left|center|right) ;; *) die "Invalid horizontal position" ;; esac
+case "$V" in up|center|down) ;; *) die "Invalid vertical position" ;; esac
+case "$S" in small|normal|large) ;; *) die "Invalid size" ;; esac
+case "$C" in
+  cyber|neon|aurora|ocean|fire|matrix|mono|none) ;;
+  *) die "Invalid color theme: $C" ;;
+esac
+
+command -v figlet >/dev/null ||
+  die "Install figlet first: sudo pacman -S figlet"
+
+[[ -t 1 ]] || die "Run this script directly inside a terminal"
+
+COLS=$(tput cols 2>/dev/null || echo "${COLUMNS:-80}")
+ROWS=$(tput lines 2>/dev/null || echo "${LINES:-24}")
+
+# Prefer requested font, then fall back to smaller fonts if needed.
+case "$S" in
+  small)  fonts=(small standard) ;;
+  normal) fonts=(slant small standard) ;;
+  large)  fonts=(big slant small standard) ;;
+esac
+
+ART=
+for font in "${fonts[@]}"; do
+  candidate=$(figlet -f "$font" 'N0ctOS' 2>/dev/null) || continue
+
+  mapfile -t test_lines <<< "$candidate"
+  width=0
+
+  for line in "${test_lines[@]}"; do
+    ((${#line} > width)) && width=${#line}
+  done
+
+  ART=$candidate
+  (("$width" <= COLS && ${#test_lines[@]} <= ROWS)) && break
+done
+
+[[ -n "$ART" ]] || die "Could not generate logo"
+
+mapfile -t lines <<< "$ART"
+
+WIDTH=0
+for line in "${lines[@]}"; do
+  ((${#line} > WIDTH)) && WIDTH=${#line}
+done
+HEIGHT=${#lines[@]}
+
+# Color palette: RGB hex values.
+case "$C" in
+  cyber)  palette=(ff4de3 965cff 23dfff) ;;
+  neon)   palette=(ff36c7 35f5ff) ;;
+  aurora) palette=(42f5c5 6287ff ff62d6) ;;
+  ocean)  palette=(2ee6ff 1676ff) ;;
+  fire)   palette=(fff06a ff8a24 ff355e) ;;
+  matrix) palette=(28ff72) ;;
+  mono)   palette=(f2f2ff) ;;
+  none)   palette=() ;;
+esac
+
+R=() G=() B=()
+
+for hex in "${palette[@]}"; do
+  R+=("$((16#${hex:0:2}))")
+  G+=("$((16#${hex:2:2}))")
+  B+=("$((16#${hex:4:2}))")
+done
+
+paint_line() {
+  local line=$1
+  local i ch nseg scaled seg frac r g b
+  local len=${#line}
+
+  nseg=$((${#palette[@]} - 1))
+
+  for ((i=0; i<len; i++)); do
+    ch=${line:i:1}
+
+    if [[ "$C" == none || "$ch" == ' ' ]] ||
+       ((${#palette[@]} == 0)); then
+      printf '%s' "$ch"
+      continue
+    fi
+
+    if ((${#palette[@]} == 1 || WIDTH <= 1)); then
+      r=${R[0]}; g=${G[0]}; b=${B[0]}
+    else
+      scaled=$((i * nseg * 1000 / (WIDTH - 1)))
+      seg=$((scaled / 1000))
+      frac=$((scaled % 1000))
+
+      if ((seg >= nseg)); then
+        seg=$nseg
+        frac=0
+      fi
+
+      if ((frac == 0 || seg == nseg)); then
+        r=${R[seg]}; g=${G[seg]}; b=${B[seg]}
+      else
+        r=$(((R[seg] * (1000-frac) + R[seg+1] * frac) / 1000))
+        g=$(((G[seg] * (1000-frac) + G[seg+1] * frac) / 1000))
+        b=$(((B[seg] * (1000-frac) + B[seg+1] * frac) / 1000))
+      fi
+    fi
+
+    printf '\033[38;2;%d;%d;%dm%s\033[0m' \
+      "$r" "$g" "$b" "$ch"
+  done
+}
+
+case "$V" in
+  up)     Y=0 ;;
+  center) Y=$(((ROWS - HEIGHT) / 2)) ;;
+  down)   Y=$((ROWS - HEIGHT)) ;;
+esac
+
+((Y < 0)) && Y=0
+
+if ((CLEAR)); then
+  printf '\033[2J\033[H'
+fi
+
+for ((row=0; row<HEIGHT; row++)); do
+  line=${lines[row]}
+  len=${#line}
+
+  case "$H" in
+    left)   X=0 ;;
+    center) X=$(((COLS - len) / 2)) ;;
+    right)  X=$((COLS - len)) ;;
+  esac
+
+  ((X < 0)) && X=0
+
+  # Position the cursor (ANSI coordinates start at 1).
+  printf '\033[%d;%dH' "$((Y + row + 1))" "$((X + 1))"
+  paint_line "$line"
+  printf '\033[0m'
+done
+
+END=$((Y + HEIGHT + 1))
+((END > ROWS)) && END=$ROWS
+printf '\033[%d;1H' "$END"

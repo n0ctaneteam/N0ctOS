@@ -16,6 +16,9 @@
 !n0ctos-install
 !n0ctos-update
 !n0ct-patch
+!n0ct-pkg
+!n0ct-update
+!n0ct-branch-switch
 !n0ct-utils-screenshot.sh
 !n0shell-bar
 !n0shell-launch

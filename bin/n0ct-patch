@@ -20,81 +20,327 @@ Batch order:
 """
 
 import argparse
+import fnmatch
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import yaml
 
+try:
+    import jsonschema
+except ImportError:
+    jsonschema = None
+
+
+def _ensure_sudo():
+    """Ensure we're running as root, prompting for sudo if needed.
+
+    Similar to n0ct-pkg's check_sudo(): if not root, validate sudo access
+    and re-execute with sudo. Exits on failure.
+    """
+    if os.geteuid() == 0:
+        return
+
+    # Check if we have passwordless sudo
+    try:
+        subprocess.run(["sudo", "-n", "true"], check=True, capture_output=True)
+        # Have passwordless sudo, re-execute with sudo
+        os.execvp("sudo", ["sudo", sys.argv[0]] + sys.argv[1:])
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    # Need to prompt for password
+    print("n0ct-patch: requires root privileges", file=sys.stderr)
+    try:
+        subprocess.run(["sudo", "-v"], check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("n0ct-patch: sudo authentication failed", file=sys.stderr)
+        sys.exit(1)
+
+    # Re-execute with sudo
+    os.execvp("sudo", ["sudo", sys.argv[0]] + sys.argv[1:])
+
+
+# Re-execute with sudo
+    os.execvp("sudo", ["sudo", sys.argv[0]] + sys.argv[1:])
+
 
 # ---------------------------------------------------------------------------
-# Paths
+# Schema validation & Nomenclature
 # ---------------------------------------------------------------------------
+
+SCHEMA_FILENAME = "schema.yaml"
+BRANCH_PATCH_REGEX = re.compile(r"^00-[A-Z][A-Z0-9_]*\.yaml$")
+# Version patch: major.minor[.type][-serial][-name].yaml
+# type ∈ {a,b,r} optional; serial optional; name optional (snake_case)
+VERSION_PATCH_REGEX = re.compile(
+    r"^(\d+)\.(\d+)(?:\.([abr]))?(?:-(\d+))?(?:-([a-z0-9]+(?:_[a-z0-9]+)*))?\.yaml$"
+)
+
+_jsonschema_warned = False
+
+
+def _load_schema(patches_dir: Path):
+    """Load JSON schema from patches dir or default location."""
+    # Try patch's directory first
+    schema_path = patches_dir / SCHEMA_FILENAME
+    if schema_path.exists():
+        return schema_path
+    # Try default patches dir
+    schema_path = DEFAULT_PATCHES_DIR / SCHEMA_FILENAME
+    if schema_path.exists():
+        return schema_path
+    return None
+
+
+def _validate_schema(patch: dict, patches_dir: Path, filename: str, validate_mode: bool):
+    """Validate patch against JSON schema. Raises RuntimeError on failure."""
+    global _jsonschema_warned
+    if jsonschema is None:
+        if not _jsonschema_warned:
+            print("  [warn] jsonschema not installed — schema validation skipped (pacman -S python-jsonschema)", file=sys.stderr)
+            _jsonschema_warned = True
+        return
+
+    schema_path = _load_schema(patches_dir)
+    if schema_path is None:
+        return  # no schema, skip silently
+
+    try:
+        schema = yaml.safe_load(schema_path.read_text())
+    except Exception as e:
+        if validate_mode:
+            raise RuntimeError(f"failed to load schema {schema_path}: {e}")
+        return
+
+    try:
+        jsonschema.validate(instance=patch, schema=schema)
+    except jsonschema.ValidationError as e:
+        # Use best match for clearer error
+        best = e
+        while best.context:
+            best = best.context[0]
+        msg = f"schema validation failed: {best.message} (at {' -> '.join(map(str, best.absolute_path))})"
+        raise RuntimeError(msg)
+
+
+def _check_nomenclature(filename: str, validate_mode: bool):
+    """Check patch filename against nomenclature. Returns (is_valid, message)."""
+    if BRANCH_PATCH_REGEX.match(filename):
+        return True, ""
+    if VERSION_PATCH_REGEX.match(filename):
+        return True, ""
+    msg = (f"filename '{filename}' does not match nomenclature: "
+           f"expected '00-<BRANCH>.yaml' or '<major>.<minor>[.<type>][-<serial>][-<name>].yaml' "
+           f"(type ∈ {{a,b,r}}, name snake_case)")
+    if validate_mode:
+        return False, msg
+    print(f"  [warn] {msg}", file=sys.stderr)
+    return True, msg
+
+
+def _resolve_patches_dir(patches_dir: Path, validate_mode: bool):
+    """Resolve patches directory, checking existence."""
+    if not patches_dir.is_dir():
+        raise RuntimeError(f"patches dir not found: {patches_dir}")
+    return patches_dir
+
+
+def run_validate(patches_dir: Path, explicit_files: list):
+    """Validate patches. Returns 0 if all valid, 1 if any error."""
+    patches_dir = _resolve_patches_dir(patches_dir, True)
+    errors = 0
+    warnings = 0
+
+    if explicit_files:
+        files = [Path(f) for f in explicit_files]
+    else:
+        # In validation mode, check all patches but respect .patchignore
+        ignore_patterns = load_patchignore(patches_dir)
+        files = sorted(patches_dir.glob("*.yaml"), key=lambda p: p.name)
+        files = [f for f in files if not is_patch_ignored(f.name, ignore_patterns)]
+
+    for f in files:
+        try:
+            patch = load_patch(f)
+            # Schema validation
+            _validate_schema(patch, patches_dir, f.name, True)
+            # Nomenclature check
+            ok, msg = _check_nomenclature(f.name, True)
+            if not ok:
+                print(f"ERROR {f.name}: {msg}")
+                errors += 1
+            else:
+                print(f"OK {f.name}")
+        except Exception as e:
+            print(f"ERROR {f.name}: {e}")
+            errors += 1
+
+    if errors:
+        print(f"\nValidation failed: {errors} error(s), {warnings} warning(s)")
+        return 1
+    print(f"\nAll {len(files)} patch(es) valid.")
+    return 0
 #
 # Root is always /usr/share/N0ctOS on a deployed system. Patches live in
 # <root>/patches. The applied list lives in the user config dir.
 
 DEFAULT_ROOT = Path("/usr/share/N0ctOS")
 DEFAULT_PATCHES_DIR = DEFAULT_ROOT / "patches"
+DEFAULT_PATCHIGNORE = ".patchignore"
+SYSTEM_APPLIED_FILE = DEFAULT_ROOT / "local" / "patches-applied.txt"
+
+
+def _invoking_user():
+    """Return (name, uid, gid, home) for the user behind sudo, else None.
+
+    When n0ct-patch runs via sudo, Path.home()/HOME point at /root.
+    The applied file must live in the local user's home, not root's.
+    Ownership stays root (see save_applied) — this helper is only for
+    path resolution and for dropping paru privileges, never for chown.
+    """
+    import pwd
+
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user and sudo_user != "root":
+        try:
+            pw = pwd.getpwnam(sudo_user)
+            gid = int(os.environ.get("SUDO_GID", pw.pw_gid))
+            return (pw.pw_name, pw.pw_uid, gid, Path(pw.pw_dir))
+        except (KeyError, ValueError):
+            pass
+    sudo_uid = os.environ.get("SUDO_UID")
+    if sudo_uid:
+        try:
+            uid = int(sudo_uid)
+            if uid != 0:
+                pw = pwd.getpwuid(uid)
+                gid = int(os.environ.get("SUDO_GID", pw.pw_gid))
+                return (pw.pw_name, uid, gid, Path(pw.pw_dir))
+        except (ValueError, KeyError):
+            pass
+    return None
+
+
+def _user_home() -> Path:
+    """Home of the invoking (sudo) user, else current user's home."""
+    inv = _invoking_user()
+    if inv is not None:
+        return inv[3]
+    return Path.home()
 
 
 def default_applied_file() -> Path:
-    return Path.home() / ".config" / "N0ctOS" / "data" / "patches-applied.txt"
+    """Local (user) applied file path, resolved for the invoking user."""
+    return _user_home() / ".config" / "N0ctOS" / "data" / "patches-applied.txt"
 
 
+def system_applied_file() -> Path:
+    """System-wide applied file path (machine-specific, in local/)."""
+    return SYSTEM_APPLIED_FILE
+
+
+def legacy_applied_file() -> Path:
+    """Legacy JSON path, resolved for the invoking user (sudo-safe)."""
+    return _user_home() / ".config" / "N0ctOS" / "data" / "patches-applied.json"
+
+
+def load_patchignore(patches_dir: Path) -> list[str]:
+    """Load .patchignore patterns from the patches directory.
+
+    Returns list of patterns (filenames or globs). Lines starting with #
+    and empty lines are ignored.
+    """
+    ignore_file = patches_dir / DEFAULT_PATCHIGNORE
+    if not ignore_file.exists():
+        return []
+    try:
+        text = ignore_file.read_text()
+    except OSError:
+        return []
+    patterns = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        patterns.append(line)
+    return patterns
+
+
+def is_patch_ignored(patch_name: str, ignore_patterns: list[str]) -> bool:
+    """Check if a patch filename matches any ignore pattern."""
+    for pattern in ignore_patterns:
+        if fnmatch.fnmatch(patch_name, pattern):
+            return True
+    return False
+
+
+# Import-time fallback for back-compat; prefer legacy_applied_file().
 LEGACY_APPLIED_FILE = Path.home() / ".config" / "N0ctOS" / "data" / "patches-applied.json"
+
+
+def _chown_to_root(path: Path):
+    """Best-effort chown of path to root:root. No-op when not root.
+
+    The tracking file (and its data dir) must be owned by system/root,
+    readonly for users (0444 / 0755). Even though the file lives inside
+    the invoking user's home (see _user_home), it is never user-owned:
+    real runs always go through sudo, so root creates it root-owned; this
+    helper additionally repairs files/dirs a previous run may have left
+    user-owned.
+    """
+    if os.geteuid() != 0:
+        return
+    try:
+        os.chown(path, 0, 0)
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------------------
 # Package manager
 # ---------------------------------------------------------------------------
 #
-# Scalable base commands — the "start part", package names are appended.
-# Override these two vars to swap managers. Non-interactive by default
-# so patches never hang on a prompt. Removes always run before installs.
-
-PKG_ADD_BASE = ["paru", "-Sy", "--needed", "--noconfirm"]
-PKG_REMOVE_BASE = ["paru", "-Rs", "--noconfirm"]
-PKG_TIMEOUT = 300
-
+# Delegates to n0ct-pkg for all package operations. n0ct-pkg handles
+# retry logic, sudo, AUR detection, and privilege dropping internally.
 
 def apply_packages(add, remove, dry_run: bool):
-    """Remove then install package lists via the configured manager."""
+    """Remove then install package lists via n0ct-pkg."""
     add = list(add or [])
     remove = list(remove or [])
 
+    if dry_run:
+        if remove:
+            print(f"[pkg] remove {' '.join(remove)}")
+            print(f"  run: n0ct-pkg remove {' '.join(remove)}")
+        if add:
+            print(f"[pkg] add {' '.join(add)}")
+            print(f"  run: n0ct-pkg add {' '.join(add)}")
+        return
+
+    # Use n0ct-pkg for package operations (handles retry, sudo, AUR detection)
     if remove:
-        cmd = PKG_REMOVE_BASE + remove
         print(f"[pkg] remove {' '.join(remove)}")
-        print(f"  run: {' '.join(cmd)}")
-        if not dry_run:
-            r = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=PKG_TIMEOUT
-            )
-            if r.returncode != 0:
-                raise RuntimeError(
-                    f"package remove failed (exit {r.returncode})\n"
-                    f"stderr: {r.stderr.strip()}"
-                )
-            print("[pkg] remove — ok")
+        cmd = ["n0ct-pkg", "remove"] + remove
+        try:
+            subprocess.run(cmd, check=True)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"package remove failed (exit {e.returncode})")
+        print("[pkg] remove — ok")
 
     if add:
-        cmd = PKG_ADD_BASE + add
         print(f"[pkg] add {' '.join(add)}")
-        print(f"  run: {' '.join(cmd)}")
-        if not dry_run:
-            r = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=PKG_TIMEOUT
-            )
-            if r.returncode != 0:
-                raise RuntimeError(
-                    f"package install failed (exit {r.returncode})\n"
-                    f"stderr: {r.stderr.strip()}"
-                )
-            print("[pkg] install — ok")
+        cmd = ["n0ct-pkg", "add"] + add
+        try:
+            subprocess.run(cmd, check=True)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"package install failed (exit {e.returncode})")
+        print("[pkg] install — ok")
 
 
 def merge_packages(patches):
@@ -195,14 +441,55 @@ def compile_pattern(pattern: str) -> re.Pattern:
 # Conditions
 # ---------------------------------------------------------------------------
 
+WHEN_TIMEOUT = 30
+
+
+def _run_shell_capture(cmd: str, timeout: int):
+    """Run a shell cmd, capturing output, killing the group on timeout/Ctrl+C.
+
+    Returns (returncode, stdout, stderr). Raises TimeoutExpired (after
+    killing the group) or KeyboardInterrupt (after killing the group).
+    Uses its own process group so killpg never touches the runner.
+    """
+    proc = subprocess.Popen(
+        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, stdin=subprocess.DEVNULL, preexec_fn=os.setpgrp,
+    )
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_pgid(proc.pid)
+        try:
+            out, err = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            out, err = "", ""
+        raise subprocess.TimeoutExpired(cmd, timeout)
+    except KeyboardInterrupt:
+        _kill_pgid(proc.pid)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+        raise
+    return proc.returncode, out, err
+
+
 def check_when(when, dry_run: bool) -> bool:
     """Return True if op should run. `when` is a shell cmd or list of cmds."""
     if when is None:
         return True
     cmds = when if isinstance(when, list) else [when]
     for cmd in cmds:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-        ok = r.returncode == 0
+        try:
+            returncode, _, _ = _run_shell_capture(cmd, WHEN_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            # A hanging condition must never hang the whole run:
+            # treat as failed condition (skip), never abort here.
+            print(f"    [when] {cmd!r} → timeout after {WHEN_TIMEOUT}s (fail)")
+            return False
+        # KeyboardInterrupt propagates (after killing the group) so Ctrl+C
+        # aborts the whole run instead of silently skipping.
+        ok = returncode == 0
         if dry_run:
             print(f"    [when] {cmd!r} → {'pass' if ok else 'fail'}")
         if not ok:
@@ -349,11 +636,52 @@ def op_replace(spec: dict, dry_run: bool):
     print(f"[replace] {p} — {len(matches)} line(s) updated")
 
 
+def op_symlink(spec: dict, dry_run: bool):
+    """Create a symlink from source to target.
+
+    source: the physical file/directory that the symlink points to
+    target: the path where the symlink will be created
+    overwrite: if true, replace existing target (default: false, skip if exists)
+    """
+    source = spec["source"]
+    target = Path(spec["target"])
+    overwrite = spec.get("overwrite", False)
+
+    if target.exists() or target.is_symlink():
+        if not overwrite:
+            if dry_run:
+                print(f"[symlink] {target} -> {source} — EXISTS, overwrite=false → SKIP")
+                return
+            print(f"[symlink] {target} -> {source} — already exists, skipping")
+            return
+        # overwrite: true - remove existing
+        if dry_run:
+            print(f"[symlink] {target} -> {source} — OVERWRITE")
+            return
+        if target.is_dir() and not target.is_symlink():
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+
+    if dry_run:
+        print(f"[symlink] {target} -> {source} — CREATE")
+        return
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Resolve source relative to target's parent if source is relative
+    source_path = Path(source)
+    if not source_path.is_absolute():
+        source_path = (target.parent / source_path).resolve()
+    target.symlink_to(source_path)
+    print(f"[symlink] {target} -> {source_path}")
+
+
 FILE_OPS = {
     "create": op_create,
     "delete": op_delete,
     "append": op_append,
     "replace": op_replace,
+    "symlink": op_symlink,
 }
 
 
@@ -378,13 +706,20 @@ def run_command(cmd: dict, dry_run: bool):
         print(f"[cmd] {cid} — would run: {first}")
         return
 
-    r = subprocess.run(
-        run, shell=True, capture_output=True, text=True, timeout=timeout
-    )
-    if r.returncode != 0:
+    try:
+        returncode, _, stderr = _run_shell_capture(run, timeout)
+    except subprocess.TimeoutExpired:
         raise RuntimeError(
-            f"command {cid!r} failed (exit {r.returncode})\n"
-            f"stderr: {r.stderr.strip()}"
+            f"command {cid!r} timed out after {timeout}s (killed)"
+        )
+    except KeyboardInterrupt:
+        print(f"\n[killed] command {cid!r} — interrupted, child killed",
+              file=sys.stderr)
+        raise
+    if returncode != 0:
+        raise RuntimeError(
+            f"command {cid!r} failed (exit {returncode})\n"
+            f"stderr: {stderr.strip()}"
         )
     print(f"[cmd] {cid} — ok")
 
@@ -405,19 +740,38 @@ def run_section(name: str, items, runner, dry_run: bool):
         runner(item, dry_run)
 
 
-def load_patch(patch_path: Path):
+def load_patch(patch_path: Path, validate_mode: bool = False):
     """Load + validate one patch YAML. Returns the patch dict."""
     patch = yaml.safe_load(Path(patch_path).read_text())
     meta = (patch or {}).get("meta") or {}
-    if "version" not in meta:
-        raise RuntimeError(f"{patch_path} is missing meta.version")
+
+    # Validate required scope field
+    scope = meta.get("scope")
+    if scope not in ("system", "local"):
+        raise RuntimeError(
+            f"{patch_path}: meta.scope must be 'system' or 'local', got {scope!r}"
+        )
+
+    # Validate register field (optional, defaults to false)
+    register = meta.get("register", False)
+    if not isinstance(register, bool):
+        raise RuntimeError(
+            f"{patch_path}: meta.register must be boolean (true/false), got {register!r}"
+        )
+
+    # Schema validation (if schema available)
+    patches_dir = patch_path.parent
+    _validate_schema(patch, patches_dir, patch_path.name, validate_mode)
+
+    # Nomenclature check
+    _check_nomenclature(patch_path.name, validate_mode)
+
     return patch
 
 
 def print_patch_header(patch, dry_run: bool):
     meta = patch.get("meta") or {}
-    print(f"patch: {meta['version']}"
-          + (f" ({meta['name']})" if meta.get("name") else ""))
+    print(f"patch: {meta.get('name', 'unnamed')}")
     if meta.get("summary"):
         print(f"  {meta['summary']}")
     if dry_run:
@@ -442,9 +796,15 @@ def apply_file_phases(patch, dry_run: bool, with_packages: bool,
 
 
 def apply_single_patch(patch_path: Path, dry_run: bool):
-    """Apply one patch YAML file. Raises on any failure."""
-    patch = load_patch(patch_path)
+    """Apply one patch YAML file. Raises on any failure.
+
+    Explicit file mode: validates scope, but never registers (backward compatible).
+    """
+    patch = load_patch(patch_path, validate_mode=False)
+    scope = patch.get("meta", {}).get("scope")
     print_patch_header(patch, dry_run)
+    if scope:
+        print(f"  scope: {scope}")
     apply_file_phases(patch, dry_run, with_packages=True, with_pre=True)
 
 
@@ -459,8 +819,10 @@ def apply_single_patch(patch_path: Path, dry_run: bool):
 # file (["a.yaml", ...]) is accepted on read for migration, but writes
 # are always plain text.
 #
-# Permissions: the file is read-only (444) after writing; writing needs
-# sudo. Parent dir is created 755.
+# Permissions: the file lives in the invoking user's home (sudo-safe,
+# see _user_home) but is owned by system/root, mode 0444 — readonly for
+# users. Writing needs sudo. Parent data dir is created 0755 root-owned
+# so users can neither overwrite nor unlink the record.
 
 def load_applied(path: Path):
     """Return the ordered list of applied patch filenames."""
@@ -470,8 +832,16 @@ def load_applied(path: Path):
         legacy = p.with_suffix(".json")
         if p.suffix == ".txt" and legacy.exists():
             p = legacy
-        elif LEGACY_APPLIED_FILE.exists() and p == default_applied_file():
-            p = LEGACY_APPLIED_FILE
+        elif p == default_applied_file():
+            # Check both the sudo-safe dynamic legacy and the import-time
+            # constant (old runs under sudo wrote to /root/...).
+            dyn_legacy = legacy_applied_file()
+            if dyn_legacy.exists():
+                p = dyn_legacy
+            elif LEGACY_APPLIED_FILE.exists():
+                p = LEGACY_APPLIED_FILE
+            else:
+                return []
         else:
             return []
         if not p.exists():
@@ -479,7 +849,7 @@ def load_applied(path: Path):
 
     try:
         text = p.read_text()
-    except PermissionError as e:
+    except OSError as e:
         raise RuntimeError(f"cannot read {p}: {e} (check permissions)")
 
     stripped = text.strip()
@@ -507,23 +877,35 @@ def load_applied(path: Path):
 
 
 def save_applied(path: Path, names):
-    """Atomically write the applied list as plain text, then chmod 444."""
+    """Atomically write the applied list as plain text, root-owned 0444.
+
+    The file lives in the invoking user's home but stays owned by
+    system/root, readonly for users. When running as root (the normal
+    case — real runs require sudo), the data dir and the file are
+    explicitly chown'd to 0:0, repairing any user-owned leftovers.
+    Non-root test runs (--no-root-check) leave ownership as-is.
+    """
     p = Path(path)
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
         try:
             p.parent.chmod(0o755)
-        except PermissionError:
+        except OSError:
             pass  # best effort; dir may be root-owned
+        _chown_to_root(p.parent)
         tmp = p.with_name(p.name + ".tmp")
         body = "".join(n + "\n" for n in names)
         tmp.write_text(body)
+        _chown_to_root(tmp)
         tmp.replace(p)
+        # replace() preserves tmp's ownership; re-apply in case the
+        # platform replaced instead of renamed.
+        _chown_to_root(p)
         try:
             p.chmod(0o444)
-        except PermissionError:
+        except OSError:
             pass
-    except PermissionError as e:
+    except OSError as e:
         raise RuntimeError(f"cannot write {p}: {e} (run with sudo?)")
 
 
@@ -536,60 +918,207 @@ def save_applied(path: Path, names):
 #   2. merged packages: last-op-wins per package, remove then install, once
 #   3. per file in order: files → commands → post, each registered on success
 
-def select_patches(patches_dir: Path, applied, select_all: bool):
-    """Return (all_paths, selected_paths) in filename order."""
+def _load_applied_system(path: Path):
+    """Return the ordered list of applied system patch filenames."""
+    return load_applied(path)
+
+
+def _load_applied_local(path: Path):
+    """Return the ordered list of applied local patch filenames."""
+    return load_applied(path)
+
+
+def _save_applied_system(path: Path, names):
+    """Atomically write the system applied list as plain text, root-owned 0444."""
+    save_applied(path, names)
+
+
+def _save_applied_local(path: Path, names):
+    """Atomically write the local applied list as plain text, root-owned 0444."""
+    save_applied(path, names)
+
+
+def select_patches(patches_dir: Path, applied_system, applied_local, select_all: bool, ignore_patterns: list[str] = None):
+    """Return (all_paths, selected_system, selected_local) in filename order.
+
+    If ignore_patterns is provided, patches matching those patterns are
+    excluded from the selection (applies to directory scan modes only).
+
+    Patches are partitioned by their meta.scope field into system and local.
+    """
+    ignore_patterns = ignore_patterns or []
     d = Path(patches_dir)
     if not d.is_dir():
         raise RuntimeError(f"patches dir not found: {d}")
     all_paths = sorted(d.glob("*.yaml"), key=lambda p: p.name)
+    # Filter out ignored patches
+    filtered_paths = [p for p in all_paths if not is_patch_ignored(p.name, ignore_patterns)]
+
+    # Partition by scope
+    system_patches = []
+    local_patches = []
+    for p in filtered_paths:
+        patch = load_patch(p)
+        scope = patch.get("meta", {}).get("scope")
+        if scope == "system":
+            system_patches.append(p)
+        elif scope == "local":
+            local_patches.append(p)
+        else:
+            raise RuntimeError(f"{p}: invalid scope {scope!r}")
+
     if select_all:
-        return all_paths, list(all_paths)
-    applied_set = set(applied)
-    selected = [p for p in all_paths if p.name not in applied_set]
-    return all_paths, selected
+        return filtered_paths, system_patches, local_patches
+
+    applied_system_set = set(applied_system)
+    applied_local_set = set(applied_local)
+
+    selected_system = [p for p in system_patches if p.name not in applied_system_set]
+    selected_local = [p for p in local_patches if p.name not in applied_local_set]
+
+    return filtered_paths, selected_system, selected_local
 
 
-def apply_batch(patches_dir: Path, applied_file: Path, dry_run: bool,
-                select_all: bool):
-    """Apply a batch of patches with one merged package pass."""
-    all_paths, selected_paths = select_patches(
-        patches_dir, load_applied(applied_file), select_all
+def run_check(patches_dir: Path, applied_system_file: Path, applied_local_file: Path, dry_run: bool) -> int:
+    """Check for pending patches. Exit code: 0=none, 1=pending, 2=error."""
+    if not patches_dir.is_dir():
+        print(f"patches dir not found: {patches_dir}", file=sys.stderr)
+        return 2
+
+    # In check mode, we want to see branch patches but filter out non-patch files
+    ignore_patterns = load_patchignore(patches_dir)
+    # Don't filter branch patches (00-*.yaml) in check mode - we want to see them
+    check_ignore_patterns = [p for p in ignore_patterns if p != "00-*.yaml"]
+    all_paths, selected_system, selected_local = select_patches(
+        patches_dir, _load_applied_system(applied_system_file), _load_applied_local(applied_local_file),
+        select_all=False, ignore_patterns=check_ignore_patterns
+    )
+
+    if not all_paths:
+        print(f"no patches in {patches_dir}")
+        return 0
+
+    applied_system = _load_applied_system(applied_system_file)
+    applied_local = _load_applied_local(applied_local_file)
+
+    print(f"patches dir: {patches_dir}")
+    print(f"  system: {len([p for p in all_paths if load_patch(p, True).get('meta', {}).get('scope') == 'system'])} total, {len(selected_system)} pending")
+    print(f"  local:  {len([p for p in all_paths if load_patch(p, True).get('meta', {}).get('scope') == 'local'])} total, {len(selected_local)} pending")
+    print(f"system applied file: {applied_system_file} ({len(applied_system)} applied)")
+    print(f"local applied file:  {applied_local_file} ({len(applied_local)} applied)")
+    if ignore_patterns:
+        print(f"ignored: {', '.join(ignore_patterns)}")
+
+    has_pending = False
+
+    if selected_system:
+        has_pending = True
+        print("\nPending system patches:")
+        for path in selected_system:
+            patch = load_patch(path, True)
+            meta = patch.get("meta") or {}
+            name = meta.get("name", "")
+            summary = meta.get("summary", "")
+            reg = meta.get("register", False)
+            line = f"  {path.name}"
+            if name:
+                line += f"  ({name}"
+            line += f", register={reg})"
+            if summary:
+                line += f" — {summary}"
+            print(line)
+
+    if selected_local:
+        has_pending = True
+        print("\nPending local patches:")
+        for path in selected_local:
+            patch = load_patch(path, True)
+            meta = patch.get("meta") or {}
+            name = meta.get("name", "")
+            summary = meta.get("summary", "")
+            reg = meta.get("register", False)
+            line = f"  {path.name}"
+            if name:
+                line += f"  ({name}"
+            line += f", register={reg})"
+            if summary:
+                line += f" — {summary}"
+            print(line)
+
+    if not has_pending:
+        print("No pending patches.")
+        return 0
+
+    return 1
+
+
+def apply_batch(patches_dir: Path, applied_system_file: Path, applied_local_file: Path, dry_run: bool,
+                select_all: bool, check_mode: bool = False):
+    """Apply a batch of patches with one merged package pass.
+
+    Patches are partitioned by scope (system/local). Packages are merged
+    across both scopes. System patches are applied first, then local patches.
+    Each scope registers to its own applied file.
+    """
+    ignore_patterns = load_patchignore(patches_dir)
+    all_paths, selected_system, selected_local = select_patches(
+        patches_dir,
+        _load_applied_system(applied_system_file),
+        _load_applied_local(applied_local_file),
+        select_all, ignore_patterns
     )
     if not all_paths:
         print(f"no patches in {patches_dir}")
         return
 
-    applied = load_applied(applied_file)
-    applied_set = set(applied)
+    applied_system = _load_applied_system(applied_system_file)
+    applied_local = _load_applied_local(applied_local_file)
+    applied_system_set = set(applied_system)
+    applied_local_set = set(applied_local)
+
     mode = "all" if select_all else "diff"
+    total_system = len([p for p in all_paths if load_patch(p, False).get("meta", {}).get("scope") == "system"])
+    total_local = len([p for p in all_paths if load_patch(p, False).get("meta", {}).get("scope") == "local"])
     print(f"patches dir: {patches_dir} "
-          f"({len(selected_paths)} selected, {len(all_paths)} total)")
-    print(f"applied file: {applied_file} ({len(applied)} applied)")
+          f"({len(selected_system)} system + {len(selected_local)} local selected, "
+          f"{total_system} system + {total_local} local total)")
+    print(f"system applied file: {applied_system_file} ({len(applied_system)} applied)")
+    print(f"local applied file:  {applied_local_file} ({len(applied_local)} applied)")
     print(f"mode: {mode}")
+    if ignore_patterns:
+        print(f"ignored: {', '.join(ignore_patterns)}")
     if dry_run:
         print("  [DRY RUN — will not register]")
 
     if not select_all:
         for p in all_paths:
-            if p.name in applied_set:
-                print(f"[skip] {p.name} — already applied")
-    if not selected_paths:
+            patch = load_patch(p, False)
+            scope = patch.get("meta", {}).get("scope")
+            if scope == "system" and p.name in applied_system_set:
+                print(f"[skip] {p.name} — already applied (system)")
+            elif scope == "local" and p.name in applied_local_set:
+                print(f"[skip] {p.name} — already applied (local)")
+
+    if not selected_system and not selected_local:
         print("nothing to do.")
         return
 
-    loaded = [(p, load_patch(p)) for p in selected_paths]
+    # Load all selected patches for package merging
+    loaded_system = [(p, load_patch(p, False)) for p in selected_system]
+    loaded_local = [(p, load_patch(p, False)) for p in selected_local]
+    all_loaded = loaded_system + loaded_local
 
-    # 1. pres upfront, file order
-    for path, patch in loaded:
+    # 1. pres upfront, file order (all patches)
+    for path, patch in all_loaded:
         if patch.get("pre"):
             print(f"\n>>> {path.name} (pre) <<<")
             run_section("pre", patch.get("pre") or [], run_command, dry_run)
 
-    # 2. merged packages, remove then install, once
-    net_add, net_remove = merge_packages([patch for _, patch in loaded])
+    # 2. merged packages across ALL selected patches (system + local), once
+    net_add, net_remove = merge_packages([patch for _, patch in all_loaded])
     if net_add or net_remove:
         print("\n=== packages (merged) ===")
-        print(f"  from: {', '.join(p.name for p, _ in loaded)}")
+        print(f"  from: {', '.join(p.name for p, _ in all_loaded)}")
         if net_remove:
             print(f"  remove: {' '.join(net_remove)}")
         if net_add:
@@ -598,24 +1127,55 @@ def apply_batch(patches_dir: Path, applied_file: Path, dry_run: bool,
     else:
         print("\n=== packages (merged) ===\n  nothing to do")
 
-    # 3. per-file files → commands → post, register each on success
-    for path, patch in loaded:
+    # 3. Apply system patches first
+    if loaded_system:
+        print("\n=== system patches ===")
+    for path, patch in loaded_system:
         name = path.name
         print(f"\n>>> {name} <<<")
         print_patch_header(patch, dry_run)
         run_section("files", patch.get("files") or [], run_file_op, dry_run)
-        run_section("commands", patch.get("commands") or [],
-                    run_command, dry_run)
+        run_section("commands", patch.get("commands") or [], run_command, dry_run)
         run_section("post", patch.get("post") or [], run_command, dry_run)
+
+        register = patch.get("meta", {}).get("register", False)
         if dry_run:
-            print(f"  [dry-run] would register {name}")
-        elif name in applied_set:
-            print(f"[register] {name} — already listed")
+            print(f"  [dry-run] would register {name} (system, register={register})")
+        elif register:
+            if name in applied_system_set:
+                print(f"[register] {name} — already listed (system)")
+            else:
+                applied_system.append(name)
+                applied_system_set.add(name)
+                _save_applied_system(applied_system_file, applied_system)
+                print(f"[register] {name} (system)")
         else:
-            applied.append(name)
-            applied_set.add(name)
-            save_applied(applied_file, applied)
-            print(f"[register] {name}")
+            print(f"[skip register] {name} (register=false)")
+
+    # 4. Apply local patches second
+    if loaded_local:
+        print("\n=== local patches ===")
+    for path, patch in loaded_local:
+        name = path.name
+        print(f"\n>>> {name} <<<")
+        print_patch_header(patch, dry_run)
+        run_section("files", patch.get("files") or [], run_file_op, dry_run)
+        run_section("commands", patch.get("commands") or [], run_command, dry_run)
+        run_section("post", patch.get("post") or [], run_command, dry_run)
+
+        register = patch.get("meta", {}).get("register", False)
+        if dry_run:
+            print(f"  [dry-run] would register {name} (local, register={register})")
+        elif register:
+            if name in applied_local_set:
+                print(f"[register] {name} — already listed (local)")
+            else:
+                applied_local.append(name)
+                applied_local_set.add(name)
+                _save_applied_local(applied_local_file, applied_local)
+                print(f"[register] {name} (local)")
+        else:
+            print(f"[skip register] {name} (register=false)")
 
     print("\ndone.")
 
@@ -625,46 +1185,105 @@ def apply_batch(patches_dir: Path, applied_file: Path, dry_run: bool,
 # ---------------------------------------------------------------------------
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("patch", nargs="?", help="path to patch YAML")
-    ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--apply-missing", action="store_true",
-                    help="batch: apply unapplied patches from --patches-dir")
-    ap.add_argument("--all", action="store_true",
-                    help="batch: apply every patch, ignore applied file "
-                         "(still registers)")
-    ap.add_argument("--patches-dir", default=str(DEFAULT_PATCHES_DIR),
-                    help="dir to scan in batch mode (default: %(default)s)")
-    ap.add_argument("--applied-file", default=str(default_applied_file()),
-                    help="plain-text applied list (default: %(default)s)")
+    ap = argparse.ArgumentParser(
+        description="Apply patch YAML files to the system.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Modes:
+  n0ct-patch                          # scan default dir, apply missing (default)
+  n0ct-patch -m                       # apply unapplied patches from default dir
+  n0ct-patch -a                       # apply all patches from default dir
+  n0ct-patch -d /path/to/patches      # scan custom directory
+  n0ct-patch patch1.yaml patch2.yaml  # apply explicit files (ignores .patchignore)
+  n0ct-patch -c                       # list pending patches (no changes)
+  n0ct-patch -c -d /path              # check custom directory
+"""
+    )
+    # Positional: explicit patch files
+    ap.add_argument("patches", nargs="*", help="explicit patch YAML files to apply")
+    ap.add_argument("-n", "--dry-run", action="store_true",
+                    help="preview changes without applying")
+    ap.add_argument("-c", "--check", action="store_true",
+                    help="list pending patches (exit 0=none, 1=pending, 2=error)")
+    ap.add_argument("-v", "--validate", action="store_true",
+                    help="validate patch schema and nomenclature (exit 0=all valid, 1=any error)")
+    ap.add_argument("-m", "--apply-missing", action="store_true",
+                    help="batch: apply unapplied patches from --patches-dir (default if no args)")
+    ap.add_argument("-a", "--all", action="store_true",
+                    help="batch: apply every patch, ignore applied file (still registers)")
+    ap.add_argument("-p", "--patches-dir", default=str(DEFAULT_PATCHES_DIR),
+                    help="directory to scan for patches (default: %(default)s)")
+    ap.add_argument("-d", "--dir", dest="custom_dir", metavar="DIR",
+                    help="alias for --patches-dir")
+    ap.add_argument("-s", "--system-file", default=str(system_applied_file()),
+                    help="system-wide applied list (default: %(default)s)")
+    ap.add_argument("-l", "--local-file", default=str(default_applied_file()),
+                    help="user-local applied list (default: %(default)s)")
+    ap.add_argument("--applied-file", dest="applied_file_legacy", default=None,
+                    help=argparse.SUPPRESS)  # legacy alias, deprecated
     ap.add_argument("--no-root-check", action="store_true",
                     help="testing only: allow real runs without root")
     args = ap.parse_args()
 
-    # Real runs mutate the system (packages, /etc files, read-only record).
-    # Refuse to limp along unprivileged; --dry-run previews need no root.
-    if os.geteuid() != 0 and not args.dry_run and not args.no_root_check:
-        print("n0ct-patch: must run as root — re-run with sudo "
-              "(or preview with --dry-run)", file=sys.stderr)
-        sys.exit(1)
+    # Handle legacy --applied-file alias (maps to --local-file for backward compat)
+    applied_local_file = Path(args.local_file)
+    if args.applied_file_legacy is not None:
+        applied_local_file = Path(args.applied_file_legacy)
+    applied_system_file = Path(args.system_file)
+
+    # Handle --dir alias
+    patches_dir = Path(args.custom_dir) if args.custom_dir else Path(args.patches_dir)
+
+    # Determine mode
+    has_explicit_files = len(args.patches) > 0
+    is_batch_mode = args.apply_missing or args.all
+
+    # Default to --apply-missing if no explicit files, no --all, no --check, no --apply-missing explicitly set
+    # (i.e., user ran `n0ct-patch` with no args)
+    if not has_explicit_files and not args.all and not args.check and not args.apply_missing:
+        is_batch_mode = True
+        args.apply_missing = True
+
+    # Mutually exclusive checks
+    if has_explicit_files and is_batch_mode:
+        ap.error("explicit patch files cannot be combined with --apply-missing/--all")
+    if has_explicit_files and args.custom_dir:
+        ap.error("explicit patch files cannot be combined with --dir/--patches-dir")
+    if args.check and has_explicit_files:
+        ap.error("--check cannot be used with explicit patch files")
+
+    # Read-only modes (--dry-run, --check, --validate) don't need sudo
+    is_read_only = args.dry_run or args.check or args.validate
+    if not is_read_only and not args.no_root_check:
+        _ensure_sudo()
 
     try:
-        if args.apply_missing or args.all:
-            if args.patch:
-                ap.error("patch file cannot be combined with "
-                         "--apply-missing/--all")
-            apply_batch(Path(args.patches_dir),
-                        Path(args.applied_file),
-                        args.dry_run,
-                        select_all=args.all)
+        if args.validate:
+            # --validate mode: validate patch schema and nomenclature
+            exit_code = run_validate(patches_dir, args.patches)
+            sys.exit(exit_code)
+
+        if args.check:
+            # --check mode: list pending patches
+            exit_code = run_check(patches_dir, applied_system_file, applied_local_file, args.dry_run)
+            sys.exit(exit_code)
+
+        if has_explicit_files:
+            # Explicit file mode: apply each file, ignore .patchignore, no registration
+            for patch_file in args.patches:
+                apply_single_patch(Path(patch_file), args.dry_run)
+            if not args.dry_run:
+                print("\ndone.")
         else:
-            if not args.patch:
-                ap.error("patch file required unless --apply-missing/--all "
-                         "is given")
-            apply_single_patch(Path(args.patch), args.dry_run)
-            print("\ndone.")
-    except (RuntimeError, ValueError, FileNotFoundError,
-            PermissionError) as e:
+            # Directory scan mode (default dir or --patches-dir/--dir)
+            apply_batch(patches_dir, applied_system_file, applied_local_file, args.dry_run,
+                        select_all=args.all, check_mode=False)
+    except KeyboardInterrupt:
+        print("\ninterrupted — nothing registered beyond last [register]",
+              file=sys.stderr)
+        sys.exit(130)
+    except (RuntimeError, ValueError, OSError,
+            subprocess.TimeoutExpired) as e:
         print(f"\nFAILED: {e}", file=sys.stderr)
         sys.exit(1)
 
