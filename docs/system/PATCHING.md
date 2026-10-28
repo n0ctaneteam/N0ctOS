@@ -4,7 +4,6 @@ How N0ctOS updates deployed systems, one version at a time.
 
 - The runner: `bin/n0ct-patch` (single Python 3 file, only `pyyaml` beyond stdlib).
 - The patch format: see `PATCH FILES.md` in this directory.
-- Runnable demos of everything below: `examples/` (run `./examples/verify.sh` from repo root).
 
 ---
 
@@ -40,7 +39,6 @@ code**. Readable, diffable, safe to dry-run, free of escaping hell.
 | Runner | `bin/n0ct-patch` | Parses YAML, compiles the match language, executes everything |
 | Patches | `/usr/share/N0ctOS/patches/*.yaml` | Deployed patch files, applied in filename order |
 | Record | `~/.config/N0ctOS/data/patches-applied.txt` | Which patches already applied (plain text, one filename per line) |
-| Demos | `examples/` | Fixtures + patches + `verify.sh` proving all of this works |
 
 `bin/n0ct-patch` is the whole backend: match compiler
 (`compile_pattern`), five file ops (`op_create/delete/append/replace/symlink`),
@@ -60,8 +58,7 @@ will be a wrapper listing patch files, not a schema change.
 filename (`sorted()`, plain string order). Name files so that order is
 meaningful: `01-base.yaml`, `02-driver.yaml`, … or `1.2.0-….yaml`
 (zero-pad numbers if you pass 9). Subdirectories are ignored — the
-scan is non-recursive, which is how `examples/patches/neg/` (expected
-failures) coexists with runnable demos.
+scan is non-recursive.
 
 **Selection is filename comparison.** The runner never parses versions
 to decide what to run. A patch is pending iff its filename is absent
@@ -74,7 +71,10 @@ from the record. No `requires:` / `from_version` enforcement exists
 n0ct-patch fix.yaml                                              # single file
 n0ct-patch --apply-missing [--patches-dir D] [--applied-file F]  # diff batch
 n0ct-patch --all [same options]                                  # full batch
+n0ct-patch --validate [patch.yaml]                               # validate only, no execution
+n0ct-patch --check                                               # list pending patches (exit 0/1/2)
 # any of the above + --dry-run for a side-effect-free preview
+# add -V/--verbose for plan screen + diffs, --auto for script-friendly
 ```
 
 | Mode | Selects | Records |
@@ -88,9 +88,16 @@ A positional patch file cannot be combined with a batch flag
 
 - `0` — clean (no errors, no pending in check mode)
 - `1` — pending patches (check mode) or any `FAILED:`
-- `2` — CLI misuse / schema validation errors
-- `3` — usage error (invalid args)
+- `2` — CLI misuse / schema validation errors / usage error
 - `130` — `Ctrl+C` (child group killed, partial batch stays as-is)
+
+### Additional flags
+
+| Flag | Meaning |
+|---|---|
+| `-V`, `--verbose` | Plan screen before execution, full diffs after, extra per-step detail |
+| `--auto` | Script-friendly: no colors, no keypress pauses, no summary screens |
+| `--color auto\|always\|never` | Force ANSI color mode (honors `NO_COLOR`, `COLOR_MODE`) |
 
 ## 6. Batch pipeline
 
@@ -272,25 +279,42 @@ fixing the cause. A patch whose `post` cannot pass in the target
 environment never registers and re-applies from scratch every run —
 keep `post` green where the patch is expected to converge.
 
-## 12. Dry-run contract
+## 13. Dry-run contract
 
 `--dry-run` prints everything it *would* do and changes nothing:
 
 - `when` conditions execute (see §9) with pass/fail shown.
 - `create`/`delete`/`append` print target, sizes, first lines.
 - `replace` prints raw pattern, compiled regex, match count, and a
-  before/after preview per line — including `matches: 0 → real run
-  would ABORT` instead of failing.
+  before/after preview per line — including `matches: 0 → SKIP`
+  instead of failing.
 - Commands print `would run: <first line>`; packages print the full
   `paru …` command lines; nothing executes.
 - Batch prints `would register <name>` per file; the record (and its
   directory) is never created or modified.
 
-This is verified, not just asserted: `examples/verify.sh` snapshots
-sha256 of every fixture before/after all dry-runs and fails if a byte
-moved. If you ever suspect a leak, that script is the place to prove it.
+This contract is guaranteed: no filesystem mutation occurs during `--dry-run`. If you ever suspect a leak, a scratch run with temporary files under `/tmp` will prove it.
 
-## 13. Operating it
+## 14. Summary screens
+
+Two framed screens bookend a batch run, both rendered with the unified
+rich-text system and both pausing for a keypress (skipped under
+`--auto` or non-TTY):
+
+**Plan screen** (`--verbose` only, after validation, before execution):
+- Patches to apply with scope/summary
+- Files affected with op badge (`+` create, `−` delete, `✎` edit,
+  `~` append, `→` symlink)
+- Merged packages (+/–)
+- Warnings (nomenclature, replace no-match)
+
+**Result screen** (always, after execution, dry-run included):
+- Per-patch `✓`/`✗`
+- Per-file badges (`+`/`−`/`✎`/`~`/`→`)
+- Warnings list
+- In `--verbose`: git-style diffs (red `−`, green `+`) for edited files
+
+## 15. Operating it
 
 - Patches land via the normal update flow (`update.sh` git-pulls the
   branch); converging the system is then a batch run against
@@ -302,11 +326,9 @@ moved. If you ever suspect a leak, that script is the place to prove it.
   drop to `$SUDO_USER` because `paru` refuses to run as root, and the
   record path in §8 resolves from it. `--dry-run` previews need no
   privileges; `--no-root-check` is a testing-only hatch for real runs
-  without root (used by `examples/verify.sh`, which only touches the
-  repo and `/tmp`).
+  without root.
 - Authoring loop: write patch → `--dry-run` → real run on a scratch
-  system → ship. Steal the pattern from `examples/verify.sh`, including
-  its fake-`paru`-on-`PATH` shim for testing package merges without
-  touching the real system.
+  system → ship. Use a fake `paru` on `PATH` that logs argv and exits 0
+  for testing package merges without touching the real system.
 - Keep it a single file until the interface to the main updater entry
   point is designed; no new dependencies without asking.

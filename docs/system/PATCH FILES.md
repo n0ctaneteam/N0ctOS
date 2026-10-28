@@ -2,8 +2,6 @@
 
 Everything about writing a patch YAML. For how the system runs them
 (modes, pipeline, merging, record, guarantees), see `PATCHING.md`.
-For runnable demos of every feature below, see `examples/`
-(`./examples/verify.sh` from repo root).
 
 Patches are **data, not code**: YAML in, system changes out. No
 templating, no variables, no includes, no conditionals-on-content.
@@ -196,8 +194,9 @@ Target must exist (else **skips** with a log message; dry-run prints `→ real r
 Behaviour: line-by-line, never across newlines; **every** matching
 line is updated; **only the slot text** is replaced, everything around
 it (whitespace, punctuation, `^`-captured text) is preserved verbatim;
-**zero matches aborts** (dry-run prints `would ABORT` and continues
-previewing). Need two changes? Write two `replace` ops.
+**zero matches or missing target warns and skips** (the patch still
+registers); dry-run shows the preview and would continue. Need two
+changes? Write two `replace` ops.
 
 ### `symlink`
 
@@ -252,8 +251,7 @@ patches: `"test ! -f …"`, `"! grep -qF 'marker' …"`.
 ## 7. Match language (condensed)
 
 Patterns are space-separated tokens that compile to one regex with one
-capture group (the slot). Spaces separate tokens — never literal. See
-`examples/patches/01-03*.yaml` for each token exercised for real.
+capture group (the slot). Spaces separate tokens — never literal.
 
 | Token | Meaning | Compiles to |
 |---|---|---|
@@ -266,11 +264,20 @@ capture group (the slot). Spaces separate tokens — never literal. See
 | `{:*:}` | **slot**, 0+ chars | `(.*)` |
 | `{:d:}` | **slot**, digits | `(\d+)` |
 | `{:s:}` | **slot**, whitespace | `(\s+)` |
+| `{: word :}` | **literal word filter**, whitespace inside the braces | escaped word, `\b`-bounded when word-like |
 | other | literal text, regex-escaped | `re.escape(…)` |
 
 Rules: exactly **one** slot per pattern (zero/two = abort); `^`/`^+`
 are wildcards, not anchors; literals are escaped (`hl.gapsin` never
 matches `hlXgapsin`); matching is line-scoped.
+
+**Literal word filters**: A slot whose body contains any whitespace
+(e.g. `{: hellow :}`, `{:  hello world  :}`) matches that exact word
+(variable whitespace tolerated inside the braces). It is regex-escaped
+and wrapped in `\b` word boundaries when it starts and ends with a word
+character, so `{: hellow :}` matches `hl.text = hellow` but not
+`hl.text = helloworld`. Bodies with no whitespace are builtin names
+(`{::}`, `{:*:}`, `{:d:}`, `{:s:}`); anything else is an error.
 
 Worked pairs (before → after):
 
@@ -327,33 +334,39 @@ backreferences; not multi-line; slot never optional.
 ## 10. Error handling
 
 Anything below aborts immediately with `FAILED:` on stderr, exit 1 —
-in batch mode, earlier files stay recorded (§11 of `PATCHING.md`):
+in batch mode, earlier files stay registered (§11 of `PATCHING.md`):
 
 missing/invalid `meta.scope` · **schema validation error** · unreadable
 YAML/file · bad pattern (0/2 slots, unknown slot body, double-space
-empty token) · `replace` with zero matches or missing target · `create`
-on existing without `overwrite` → **skips** · `delete` on missing with
-`missing_ok: false` → aborts · `append` on missing target → **skips** ·
-unknown `op` · non-zero exit or timeout of any command/package step ·
-bad record file or patches dir · running a real (non-`--dry-run`)
-apply without root (see §11).
+empty token) · `create` on existing without `overwrite` → **skips** ·
+`delete` on missing with `missing_ok: false` → aborts · `append` on
+missing target → **skips** · unknown `op` · non-zero exit or timeout of
+any command/package step · bad record file or patches dir · running a
+real (non-`--dry-run`) apply without root (see §11).
 
-`--dry-run` softens two of these into previews so one invocation shows
-everything: missing `append`/`replace` targets and zero-match replaces
-print `→ real run would ABORT` and continue.
+`replace` with zero matches or a missing target **warns and skips**
+instead of aborting — the patch continues and still registers. The
+warning appears in the result screen.
+
+`--dry-run` shows everything it would do without touching the
+filesystem: `when` conditions execute (pass/fail shown); `create`/
+`delete`/`append` print target and sizes; `replace` prints match count
+and before/after preview.
 
 ---
 
 ## 11. CLI + privileges
 
 ```
-n0ct-patch [patch.yaml...] [-n] [-c] [-m] [-a] [-p DIR] [-d DIR] [-s FILE] [-l FILE] [--no-root-check]
+n0ct-patch [patch.yaml...] [-n] [-c] [-v] [-V] [-m] [-a] [-p DIR] [-d DIR] [-s FILE] [-l FILE] [--no-root-check] [--auto] [--color auto|always|never]
 ```
 
 | Short | Long | Description |
 |---|---|---|
 | `-n` | `--dry-run` | Preview changes without applying |
 | `-c` | `--check` | List pending patches (exit 0=none, 1=pending, 2=error) |
+| `-v` | `--validate` | Validate patch schema and nomenclature (exit 0=all valid, 1=any error) |
+| `-V` | `--verbose` | Verbose output: plan screen, full diffs, extra detail |
 | `-m` | `--apply-missing` | Apply unapplied patches (default if no args) |
 | `-a` | `--all` | Apply all patches, ignore applied file |
 | `-p` | `--patches-dir` | Directory to scan for patches (default: `/usr/share/N0ctOS/patches`) |
@@ -361,6 +374,8 @@ n0ct-patch [patch.yaml...] [-n] [-c] [-m] [-a] [-p DIR] [-d DIR] [-s FILE] [-l F
 | `-s` | `--system-file` | System-wide applied list (default: `/usr/share/N0ctOS/local/patches-applied.txt`) |
 | `-l` | `--local-file` | User-local applied list (default: `~/.config/N0ctOS/data/patches-applied.txt`) |
 | | `--no-root-check` | Testing: allow real runs without root |
+| | `--auto` | Non-interactive, script-friendly: no colors, no prompts, no screens |
+| | `--color` | ANSI color mode: `auto` (default), `always`, `never` |
 
 - `--patches-dir` default `/usr/share/N0ctOS/patches`;
   `--system-file` default `/usr/share/N0ctOS/local/patches-applied.txt`;
@@ -372,21 +387,21 @@ n0ct-patch [patch.yaml...] [-n] [-c] [-m] [-a] [-p DIR] [-d DIR] [-s FILE] [-l F
   for sudo internally (like `n0ct-pkg`). `--dry-run` and `--check`
   previews need no privileges.
 - **Default behavior**: running `n0ct-patch` with no arguments is equivalent to `n0ct-patch --apply-missing`.
-- `--no-root-check`: testing-only hatch for real runs without root
-  (used by `examples/verify.sh`, which only touches the repo + `/tmp`).
+- `--no-root-check`: testing-only hatch for real runs without root.
+- `--auto`: script-friendly — disables ANSI colors, keypress pauses, and summary screens entirely.
+- `--color`: force ANSI on/off; honors `NO_COLOR` and `COLOR_MODE` env vars.
 - Exit codes:
   - `0` — clean (no errors, no pending in check mode)
   - `1` — pending patches (check mode) or any `FAILED:`
-  - `2` — CLI misuse / schema validation errors
-  - `3` — usage error (invalid args)
+  - `2` — CLI misuse / schema validation errors / usage error
   - `130` — `Ctrl+C` (child group killed, partial batch stays as-is)
 
 ---
 
 ## 12. Tips
 
-1. **Dry-run first, always.** Then read the `would ABORT` lines — they
-   are the runner telling you where the real run dies.
+1. **Dry-run first, always.** Then read the `→ SKIP` warnings — they
+   are the runner telling you where `replace` won't match.
 2. **Back up in `pre`, verify in `post`.** `cp x x.bak` with
    `when: "test -f x"`; `grep -q` / `curl -sf` afterwards.
 3. **Make patches re-runnable.** Guard one-shot ops:
@@ -400,7 +415,6 @@ n0ct-patch [patch.yaml...] [-n] [-c] [-m] [-a] [-p DIR] [-d DIR] [-s FILE] [-l F
 6. **Number batch files** (`01-`, `02-`) — order is lexical, so
    zero-pad past nine.
 7. **Test package merges without root:** fake `paru` on `PATH` that
-   logs argv and exits 0 (see `verify.sh`), assert the two merged
-   command lines and their order.
+   logs argv and exits 0, assert the two merged command lines and their order.
 8. **Keep `when` pure.** No writes, no installs — it runs during
    previews too.

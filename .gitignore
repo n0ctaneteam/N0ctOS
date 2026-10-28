@@ -47,7 +47,6 @@ __pycache__
 !installers/
 !patches/
 !shell/
-!examples/
 
 # Top-level intended files (explicit)
 !ARCHITECTURE.md
