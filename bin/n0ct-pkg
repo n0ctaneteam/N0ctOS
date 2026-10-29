@@ -379,6 +379,7 @@ parse_args() {
 # ---- Sudo handling ----
 SUDO_USER_NAME="${SUDO_USER:-}"
 SUDO_GID="${SUDO_GID:-}"
+SUDO_KEEPALIVE_PID=""
 
 check_sudo() {
   if [[ $EUID -eq 0 ]]; then
@@ -391,6 +392,35 @@ check_sudo() {
   info "Sudo required. Enter password:"
   sudo -v || die "Sudo authentication failed"
 }
+
+# Keep the sudo timestamp fresh for the lifetime of the script so that
+# long-running or multi-phase operations (e.g. pacman then paru) do not
+# hit a password prompt mid-run.
+SUDO_KEEPALIVE_INTERVAL=45
+
+start_sudo_keepalive() {
+  if [[ $EUID -eq 0 ]]; then
+    return 0
+  fi
+  local user="${SUDO_USER:-$(logname 2>/dev/null || echo "${USER:-root}")}"
+  if [[ "$user" == "root" ]]; then
+    return 0
+  fi
+  if ! sudo -n true 2>/dev/null; then
+    return 0
+  fi
+  (while kill -0 $$ 2>/dev/null; do sudo -n true; sleep "$SUDO_KEEPALIVE_INTERVAL"; done) &
+  SUDO_KEEPALIVE_PID=$!
+}
+
+cleanup() {
+  if [[ -n "$SUDO_KEEPALIVE_PID" ]] && kill -0 "$SUDO_KEEPALIVE_PID" 2>/dev/null; then
+    kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
+    wait "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
+  fi
+}
+
+trap cleanup EXIT INT TERM
 
 run_with_retry() {
   local -a cmd=("$@")
@@ -1562,7 +1592,10 @@ main() {
 
   if [[ "$DRY_RUN" != "true" ]]; then
     case "$main_cmd" in
-      add|remove|update|refresh|completions) check_sudo ;;
+      add|remove|update|refresh|completions)
+        check_sudo
+        start_sudo_keepalive
+        ;;
     esac
   fi
 

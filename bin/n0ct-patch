@@ -106,8 +106,35 @@ class UI:
     def blue(self, text: str) -> str:
         return self._wrap(text, BLUE)
 
+    def magenta(self, text: str) -> str:
+        return self._wrap(text, MAGENTA)
+
     def cyan(self, text: str) -> str:
         return self._wrap(text, CYAN)
+
+    def white(self, text: str) -> str:
+        return self._wrap(text, WHITE)
+
+    def bright_red(self, text: str) -> str:
+        return self._wrap(text, BRIGHT_RED)
+
+    def bright_green(self, text: str) -> str:
+        return self._wrap(text, BRIGHT_GREEN)
+
+    def bright_yellow(self, text: str) -> str:
+        return self._wrap(text, BRIGHT_YELLOW)
+
+    def bright_blue(self, text: str) -> str:
+        return self._wrap(text, BRIGHT_BLUE)
+
+    def bright_magenta(self, text: str) -> str:
+        return self._wrap(text, BRIGHT_MAGENTA)
+
+    def bright_cyan(self, text: str) -> str:
+        return self._wrap(text, BRIGHT_CYAN)
+
+    def bright_white(self, text: str) -> str:
+        return self._wrap(text, BRIGHT_WHITE)
 
     def dim(self, text: str) -> str:
         return self._wrap(text, DIM)
@@ -115,62 +142,108 @@ class UI:
     def bold(self, text: str) -> str:
         return self._wrap(text, BOLD)
 
+    def italic(self, text: str) -> str:
+        return self._wrap(text, ITALIC)
+
+    def underline(self, text: str) -> str:
+        return self._wrap(text, UNDERLINE)
+
+    def reverse(self, text: str) -> str:
+        return self._wrap(text, REVERSE)
+
+    def blink(self, text: str) -> str:
+        return self._wrap(text, BLINK)
+
+    def bg_red(self, text: str) -> str:
+        return self._wrap(text, BG_RED)
+
+    def bg_green(self, text: str) -> str:
+        return self._wrap(text, BG_GREEN)
+
+    def bg_yellow(self, text: str) -> str:
+        return self._wrap(text, BG_YELLOW)
+
+    def bg_blue(self, text: str) -> str:
+        return self._wrap(text, BG_BLUE)
+
+    # Combinations
+    def bold_red(self, text: str) -> str:
+        return self._wrap(text, BOLD + RED)
+
+    def bold_green(self, text: str) -> str:
+        return self._wrap(text, BOLD + GREEN)
+
+    def bold_yellow(self, text: str) -> str:
+        return self._wrap(text, BOLD + YELLOW)
+
+    def bold_blue(self, text: str) -> str:
+        return self._wrap(text, BOLD + BLUE)
+
+    def bold_magenta(self, text: str) -> str:
+        return self._wrap(text, BOLD + MAGENTA)
+
+    def bold_cyan(self, text: str) -> str:
+        return self._wrap(text, BOLD + CYAN)
+
+    def bold_white(self, text: str) -> str:
+        return self._wrap(text, BOLD + WHITE)
+
     # --- semantic -----------------------------------------------------------
 
     def ok(self, text: str) -> str:
-        return self.green("✓") + " " + text
+        return self.bold_green("✓") + " " + self.bold(text)
 
     def err(self, text: str) -> str:
-        return self.red("✗") + " " + text
+        return self.bold_red("✗") + " " + self.bold(text)
 
     def warn(self, text: str) -> str:
-        return self.yellow("!") + " " + text
+        return self.bold_yellow("!") + " " + self.bold(text)
 
     def info(self, text: str) -> str:
-        return self.cyan("·") + " " + text
+        return self.bold_cyan("·") + " " + self.bold(text)
 
     def note(self, text: str) -> str:
         return self.dim(text)
 
     def skip(self, text: str) -> str:
-        return self.dim("·") + " " + text
+        return self.dim("·") + " " + self.dim(text)
 
     def step(self, text: str) -> str:
-        return self.blue("→") + " " + text
+        return self.bold_blue("→") + " " + self.bold(text)
 
     # --- layout -------------------------------------------------------------
 
     def title(self, text: str, subtitle: str | None = None) -> None:
         w = min(self.width - 4, 70)
-        bar = "─" * w
-        print(f"\n{self.dim('╭')}{self.dim(bar)}{self.dim('╮')}")
-        print(f"  {self.bold(text)}")
+        bar = "═" * w
+        print(f"\n{self.bold_blue('╭')}{self.bold_blue(bar)}{self.bold_blue('╮')}")
+        print(f"  {self.bold_white(text)}")
         if subtitle:
-            print(f"  {self.dim(subtitle)}")
-        print(f"{self.dim('╰')}{self.dim(bar)}{self.dim('╯')}")
+            print(f"  {self.bold_cyan(subtitle)}")
+        print(f"{self.bold_blue('╰')}{self.bold_blue(bar)}{self.bold_blue('╯')}")
 
     def section(self, text: str) -> None:
         w = min(self.width - 4, 60)
         bar = "─" * w
-        print(f"\n{self.dim('──')} {self.bold(text)} {self.dim(bar)}")
+        print(f"\n{self.bold_magenta('──')} {self.bold_magenta(text)} {self.bold_magenta(bar)}")
 
     def rule(self, char: str = "─") -> None:
-        print(self.dim(char * min(self.width, 80)))
+        print(self.bold_cyan(char * min(self.width, 80)))
 
     def bullet(self, text: str, indent: int = 2) -> None:
-        print(" " * indent + "• " + text)
+        print(" " * indent + self.bold_green("•") + " " + text)
 
     def kv(self, key: str, value: str, width: int | None = None) -> None:
         w = width or 24
-        print(f"  {self.dim(key.ljust(w))} {value}")
+        print(f"  {self.bold_yellow(key.ljust(w))} {self.bold_white(value)}")
 
     def badge(self, kind: str) -> str:
         badges = {
-            "create": self.green("+"),
-            "delete": self.red("−"),
-            "edit": self.yellow("✎"),
-            "append": self.cyan("~"),
-            "symlink": self.blue("→"),
+            "create": self.bold_green("+"),
+            "delete": self.bold_red("−"),
+            "edit": self.bold_yellow("✎"),
+            "append": self.bold_cyan("~"),
+            "symlink": self.bold_magenta("→"),
             "skip": self.dim("·"),
         }
         return badges.get(kind, "?")
@@ -178,8 +251,8 @@ class UI:
     def box(self, lines: list[str]) -> None:
         w = max(len(l) for l in lines) + 4
         w = min(w, self.width - 2)
-        top = self.dim("╭" + "─" * (w - 2) + "╮")
-        bot = self.dim("╰" + "─" * (w - 2) + "╯")
+        top = self.bold_blue("╭" + "═" * (w - 2) + "╮")
+        bot = self.bold_blue("╰" + "═" * (w - 2) + "╯")
         print(top)
         for l in lines:
             print("  " + l)
@@ -189,20 +262,43 @@ class UI:
         if self.auto or not sys.stdout.isatty():
             return
         try:
-            input(f"\n{self.dim(msg)}")
+            input(f"\n{self.bold_yellow(msg)}")
         except (EOFError, KeyboardInterrupt):
             pass
 
 
-# ANSI codes
+# ANSI codes — full color palette
 RED = "\x1b[31;1m"
 GREEN = "\x1b[32;1m"
 YELLOW = "\x1b[33;1m"
 BLUE = "\x1b[34;1m"
+MAGENTA = "\x1b[35;1m"
 CYAN = "\x1b[36;1m"
+WHITE = "\x1b[37;1m"
+
+# Bright variants
+BRIGHT_RED = "\x1b[91;1m"
+BRIGHT_GREEN = "\x1b[92;1m"
+BRIGHT_YELLOW = "\x1b[93;1m"
+BRIGHT_BLUE = "\x1b[94;1m"
+BRIGHT_MAGENTA = "\x1b[95;1m"
+BRIGHT_CYAN = "\x1b[96;1m"
+BRIGHT_WHITE = "\x1b[97;1m"
+
+# Style modifiers
 DIM = "\x1b[2m"
 BOLD = "\x1b[1m"
+ITALIC = "\x1b[3m"
+UNDERLINE = "\x1b[4m"
+BLINK = "\x1b[5m"
+REVERSE = "\x1b[7m"
 RESET = "\x1b[0m"
+
+# Backgrounds (for emphasis)
+BG_RED = "\x1b[41m"
+BG_GREEN = "\x1b[42m"
+BG_YELLOW = "\x1b[43m"
+BG_BLUE = "\x1b[44m"
 
 UI = UI()
 
@@ -248,16 +344,14 @@ def _build_error_context(text: str, line: int, column: int = 0) -> str:
     out_lines = []
     for i in range(start, end):
         num = i + 1
-        prefix = f"{UI.dim(f'{num:4d}')} │ "
-        line_text = lines[i]
         if num == line:
-            prefix = f"{UI.red(f'{num:4d}')} │ "
-            out_lines.append(f"{prefix}{line_text}")
-            if column > 0:
-                caret = " " * (4 + 3 + column - 1) + UI.red("^")
-                out_lines.append(f"{UI.dim('     ')} │ {caret}")
+            # Error line: bright red + underline, with > marker
+            out_lines.append(
+                f"  {UI.bold_red(f'>{num:4d}')} | {UI.bold_red(UI._wrap(lines[i], UNDERLINE))}"
+            )
         else:
-            out_lines.append(f"{prefix}{line_text}")
+            # Context line: dim grey
+            out_lines.append(f"  {UI.dim(f'{num:4d}')} | {UI.dim(lines[i])}")
 
     return "\n".join(out_lines)
 
@@ -314,39 +408,42 @@ def _locate_error(text: str, exc: Exception) -> tuple[int, int, str]:
     return 1, 0, "unknown"
 
 
-def _report_file_error(patch_path: Path, exc: Exception, validate_mode: bool = False):
-    """Format and print an error for a single patch file with context."""
-    try:
-        text = patch_path.read_text()
-    except OSError:
-        text = ""
+def _report_file_block(patch_path: Path, errors: list[dict], warnings: list[dict]) -> None:
+    """Print one file's validation block with box-drawing format."""
+    has_errors = bool(errors)
 
-    line, col, loc = _locate_error(text, exc)
-
-    if isinstance(exc, yaml.YAMLError):
-        msg = str(exc)
-    elif jsonschema and isinstance(getattr(exc, "original", exc), jsonschema.ValidationError):
-        orig = getattr(exc, "original", exc)
-        best = best_match([orig]) if best_match else orig
-        msg = f"schema validation failed: {best.message} (at {' -> '.join(map(str, best.absolute_path))})"
-    elif isinstance(exc, RuntimeError):
-        msg = str(exc)
+    # File header
+    if has_errors:
+        print(f"  {UI.err(patch_path.name)}")
     else:
-        msg = str(exc)
+        print(f"  {UI.ok(patch_path.name)}")
 
-    print(f"\n  {UI.err(patch_path.name)}")
-    print(f"    {UI.red(msg)}")
-    if loc != "unknown":
-        print(f"    {UI.dim(f'at {loc}')}")
+    # Separator
+    print(UI.bold_magenta("-" * 60))
 
-    if text:
-        context = _build_error_context(text, line, col)
-        print(context)
+    # Error context + messages
+    if errors:
+        first_err = errors[0]
+        line = first_err.get("line", 1)
+        text = ""
+        try:
+            text = patch_path.read_text()
+        except OSError:
+            pass
 
-    if validate_mode:
-        ok, msg = _check_nomenclature(patch_path.name, True)
-        if not ok:
-            print(f"    {UI.warn(msg)}")
+        print(f"  {UI.bold_white('error')} at {UI.bold_yellow(f'line {line}'):}")
+        if text:
+            print(_build_error_context(text, line))
+
+        for e in errors:
+            print(f"  {UI.bold_red('✦')} {UI.bold_red(e['msg'])}")
+
+    # Warning messages
+    for w in warnings:
+        print(f"  {UI.bold_yellow('⚠')} {UI.bold_yellow(w['msg'])}")
+
+    # Closing separator
+    print(UI.bold_cyan("=" * 60))
 
 
 # ---------------------------------------------------------------------------
@@ -491,8 +588,6 @@ def validate_patch_file(path: Path) -> tuple[list[dict], list[dict]]:
 def run_validate(patches_dir: Path, explicit_files: list) -> int:
     """Validate patches. Returns 0 if all valid, 1 if any error."""
     patches_dir = _resolve_patches_dir(patches_dir, True)
-    errors = 0
-    warnings = 0
 
     if explicit_files:
         files = [Path(f) for f in explicit_files]
@@ -501,36 +596,39 @@ def run_validate(patches_dir: Path, explicit_files: list) -> int:
         files = sorted(patches_dir.glob("*.yaml"), key=lambda p: p.name)
         files = [f for f in files if not is_patch_ignored(f.name, ignore_patterns)]
 
+    # Collect all results first
+    results = []
+    total_errors = 0
+    total_warnings = 0
     for f in files:
         errs, warns = validate_patch_file(f)
-        for e in errs:
-            errors += 1
-            # Print error with context
-            try:
-                text = f.read_text()
-            except OSError:
-                text = ""
-            line = e.get("line", 1)
-            col = e.get("col", 0)
-            loc = e.get("loc", "unknown")
-            msg = e.get("msg", "unknown error")
-            print(f"\n  {UI.err(f.name)}")
-            print(f"    {UI.red(msg)}")
-            if loc != "unknown":
-                print(f"    {UI.dim(f'at {loc}')}")
-            if text:
-                context = _build_error_context(text, line, col)
-                print(context)
-        for w in warns:
-            warnings += 1
-            print(f"  {UI.warn(w['msg'])}")
-        if not errs and not warns:
-            print(f"{UI.ok(f.name)}")
+        results.append((f, errs, warns))
+        total_errors += len(errs)
+        total_warnings += len(warns)
 
-    if errors:
-        print(f"\nValidation failed: {errors} error(s), {warnings} warning(s)")
+    # Print validation header
+    print(UI.bold_blue("VALIDATION:"))
+    print(UI.bold_cyan("=" * 60))
+
+    # Print each file block
+    for f, errs, warns in results:
+        _report_file_block(f, errs, warns)
+
+    # Print summary
+    print(UI.bold_cyan("=" * 60))
+    print(f"  {UI.bold_blue('SUMMARY')}")
+    print(UI.bold_cyan("=" * 60))
+
+    for f, errs, warns in results:
+        if errs:
+            print(f"  {UI.err(f.name)}")
+        elif warns:
+            print(f"  {UI.warn(f.name)}")
+        else:
+            print(f"  {UI.ok(f.name)}")
+
+    if total_errors:
         return 1
-    print(f"\nAll {len(files)} patch(es) valid.")
     return 0
 
 
@@ -660,10 +758,10 @@ def apply_packages(add, remove, dry_run: bool):
     if dry_run:
         if remove:
             print(UI.step(f"remove {' '.join(remove)}"))
-            print(f"  run: n0ct-pkg remove {' '.join(remove)}")
+            print(f"  run: {UI.bold_white('n0ct-pkg remove')} {' '.join(remove)}")
         if add:
             print(UI.step(f"add {' '.join(add)}"))
-            print(f"  run: n0ct-pkg add {' '.join(add)}")
+            print(f"  run: {UI.bold_white('n0ct-pkg add')} {' '.join(add)}")
         return
 
     if remove:
@@ -865,14 +963,14 @@ def op_create(spec: dict, dry_run: bool):
 
     if p.exists() and not overwrite:
         if dry_run:
-            print(f"[create] {p} — EXISTS, overwrite=false → SKIP")
+            print(f"  {UI.bold_yellow('[create]')} {UI.bold_white(p)} — {UI.bold_yellow('EXISTS')} → {UI.bold_yellow('SKIP')}")
             return
-        print(f"[create] {p} — EXISTS, overwrite=false → SKIP")
+        print(f"  {UI.bold_yellow('[create]')} {UI.bold_white(p)} — {UI.bold_yellow('EXISTS')} → {UI.bold_yellow('SKIP')}")
         return
 
     if dry_run:
         verb = "OVERWRITE" if p.exists() else "CREATE"
-        print(f"[create] {p} — {verb}, {len(content)} bytes")
+        print(f"  {UI.bold_yellow('[create]')} {UI.bold_white(p)} — {UI.bold_magenta(verb)}, {len(content)} bytes")
         if mode:
             print(f"         mode: {mode}")
         return
@@ -892,12 +990,12 @@ def op_delete(spec: dict, dry_run: bool):
 
     if not p.exists():
         if missing_ok:
-            print(f"[delete] {p} — already gone, skip")
+            print(f"  {UI.bold_red('[delete]')} {UI.bold_white(p)} — {UI.bold_green('already gone')} → SKIP")
             return
         raise RuntimeError(f"{p} does not exist")
 
     if dry_run:
-        print(f"[delete] {p} — DELETE ({p.stat().st_size} bytes)")
+        print(f"  {UI.bold_red('[delete]')} {UI.bold_white(p)} — {UI.bold_magenta('DELETE')} ({p.stat().st_size} bytes)")
         return
 
     before = p.read_text()
@@ -913,9 +1011,9 @@ def op_append(spec: dict, dry_run: bool):
 
     if not p.exists():
         if dry_run:
-            print(f"[append] {p} — MISSING → SKIP")
+            print(f"  {UI.bold_cyan('[append]')} {UI.bold_white(p)} — {UI.bold_yellow('MISSING')} → SKIP")
             return
-        print(f"[append] {p} — MISSING → SKIP")
+        print(f"  {UI.bold_cyan('[append]')} {UI.bold_white(p)} — {UI.bold_yellow('MISSING')} → SKIP")
         return
 
     existing = p.read_text()
@@ -925,7 +1023,7 @@ def op_append(spec: dict, dry_run: bool):
 
     if dry_run:
         preview = content.splitlines()[0] if content else ""
-        print(f"[append] {p} — +{len(content)} bytes, first line: {preview!r}")
+        print(f"  {UI.bold_cyan('[append]')} {UI.bold_white(p)} — {UI.bold_green('+')}{len(content)} bytes, first line: {preview!r}")
         return
 
     before = existing
@@ -943,8 +1041,8 @@ def op_replace(spec: dict, dry_run: bool):
     if not p.exists():
         msg = f"target missing → SKIP"
         if dry_run:
-            print(f"[replace] {p}")
-            print(f"          {msg}")
+            print(f"  {UI.bold_red('[replace]')} {UI.bold_white(p)}")
+            print(f"          {UI.bold_yellow(msg)}")
             return
         print(UI.warn(f"{p}: {msg}"))
         CHANGELOG.add_warning(f"replace: {p}: target missing")
@@ -962,20 +1060,20 @@ def op_replace(spec: dict, dry_run: bool):
     if not matches:
         msg = f"no match in {p} for pattern {pattern!r}"
         if dry_run:
-            print(f"[replace] {p}")
+            print(f"  {UI.bold_red('[replace]')} {UI.bold_white(p)}")
             print(f"          pattern: {pattern!r}")
             print(f"          regex:   {rx.pattern}")
-            print(f"          matches: 0  → SKIP")
+            print(f"          matches: {UI.bold_red('0')} → SKIP")
             return
         print(UI.warn(f"{p}: {msg}"))
         CHANGELOG.add_warning(f"replace: {p}: no match")
         return
 
     if dry_run:
-        print(f"[replace] {p}")
+        print(f"  {UI.bold_red('[replace]')} {UI.bold_white(p)}")
         print(f"          pattern: {pattern!r}")
         print(f"          regex:   {rx.pattern}")
-        print(f"          matches: {len(matches)}")
+        print(f"          matches: {UI.bold_green(len(matches))}")
         for i, m in matches:
             old = lines[i].rstrip("\n")
             new = rx.sub(
@@ -1014,12 +1112,12 @@ def op_symlink(spec: dict, dry_run: bool):
     if target.exists() or target.is_symlink():
         if not overwrite:
             if dry_run:
-                print(f"[symlink] {target} -> {source} — EXISTS, overwrite=false → SKIP")
+                print(f"  {UI.bold_magenta('[symlink]')} {UI.bold_white(target)} -> {UI.bold_white(source)} — {UI.bold_yellow('EXISTS')} → SKIP")
                 return
-            print(f"[symlink] {target} -> {source} — already exists, skipping")
+            print(f"  {UI.bold_magenta('[symlink]')} {UI.bold_white(target)} -> {UI.bold_white(source)} — {UI.bold_yellow('already exists')} → skipping")
             return
         if dry_run:
-            print(f"[symlink] {target} -> {source} — OVERWRITE")
+            print(f"  {UI.bold_magenta('[symlink]')} {UI.bold_white(target)} -> {UI.bold_white(source)} — OVERWRITE")
             return
         if target.is_dir() and not target.is_symlink():
             shutil.rmtree(target)
@@ -1027,7 +1125,7 @@ def op_symlink(spec: dict, dry_run: bool):
             target.unlink()
 
     if dry_run:
-        print(f"[symlink] {target} -> {source} — CREATE")
+        print(f"  {UI.bold_magenta('[symlink]')} {UI.bold_white(target)} -> {UI.bold_white(source)} — CREATE")
         return
 
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -1066,7 +1164,7 @@ def run_command(cmd: dict, dry_run: bool):
 
     if dry_run:
         first = run.strip().splitlines()[0] if run.strip() else ""
-        print(UI.step(f"{cid} — would run: {first}"))
+        print(UI.step(f"{UI.bold_white(cid)} — would run: {UI.bold_yellow(first)}"))
         return
 
     try:
@@ -1078,7 +1176,7 @@ def run_command(cmd: dict, dry_run: bool):
         raise
     if returncode != 0:
         raise RuntimeError(f"command {cid!r} failed (exit {returncode})\nstderr: {stderr.strip()}")
-    print(UI.ok(f"{cid} — ok"))
+    print(UI.ok(f"{UI.bold_white(cid)} — ok"))
 
 
 # ---------------------------------------------------------------------------
@@ -1146,9 +1244,9 @@ def load_patch(patch_path: Path, validate_mode: bool = False):
 
 def print_patch_header(patch, dry_run: bool):
     meta = patch.get("meta") or {}
-    print(UI.step(f"{meta.get('name', 'unnamed')}"))
+    print(UI.step(f"{UI.bold_white(meta.get('name', 'unnamed'))}"))
     if meta.get("summary"):
-        print(f"  {meta['summary']}")
+        print(f"  {UI.bold_magenta(meta['summary'])}")
     if dry_run:
         print(UI.note("[DRY RUN]"))
 
@@ -1173,7 +1271,7 @@ def apply_single_patch(patch_path: Path, dry_run: bool):
     scope = patch.get("meta", {}).get("scope")
     print_patch_header(patch, dry_run)
     if scope:
-        print(f"  scope: {scope}")
+        print(f"  {UI.bold_yellow('scope:')} {UI.bold_cyan(scope)}")
     apply_file_phases(patch, dry_run, with_packages=True, with_pre=True)
 
 
@@ -1305,80 +1403,128 @@ def select_patches(patches_dir: Path, applied_system, applied_local, select_all:
 
 
 def run_check(patches_dir: Path, applied_system_file: Path, applied_local_file: Path, dry_run: bool) -> int:
+    """Validate patches and list pending. Returns 0 if all valid and no pending, 1 if any problem."""
     if not patches_dir.is_dir():
         print(UI.err(f"patches dir not found: {patches_dir}"))
-        return 2
+        return 1
 
     ignore_patterns = load_patchignore(patches_dir)
+    # Don't filter branch patches (00-*.yaml) in check mode - we want to see them
     check_ignore_patterns = [p for p in ignore_patterns if p != "00-*.yaml"]
-    all_paths, selected_system, selected_local = select_patches(
-        patches_dir, _load_applied_system(applied_system_file), _load_applied_local(applied_local_file),
-        select_all=False, ignore_patterns=check_ignore_patterns
-    )
+
+    all_paths = sorted(patches_dir.glob("*.yaml"), key=lambda p: p.name)
+    all_paths = [f for f in all_paths if not is_patch_ignored(f.name, check_ignore_patterns)]
 
     if not all_paths:
         print(UI.info(f"no patches in {patches_dir}"))
         return 0
 
+    # Collect all validation results (same format as --validate)
+    results = []
+    total_errors = 0
+    total_warnings = 0
+    valid_patches: dict[Path, dict] = {}
+    for f in all_paths:
+        errs, warns = validate_patch_file(f)
+        results.append((f, errs, warns))
+        total_errors += len(errs)
+        total_warnings += len(warns)
+        if not errs:
+            try:
+                valid_patches[f] = yaml.safe_load(f.read_text())
+            except Exception:
+                pass
+
+    # Print validation header and file blocks (same format as --validate)
+    print(UI.bold_blue("VALIDATION:"))
+    print(UI.bold_cyan("=" * 60))
+    for f, errs, warns in results:
+        _report_file_block(f, errs, warns)
+
+    # Print validation summary
+    print(UI.bold_cyan("=" * 60))
+    print(f"  {UI.bold_blue('SUMMARY')}")
+    print(UI.bold_cyan("=" * 60))
+    for f, errs, warns in results:
+        if errs:
+            print(f"  {UI.err(f.name)}")
+        elif warns:
+            print(f"  {UI.warn(f.name)}")
+        else:
+            print(f"  {UI.ok(f.name)}")
+
+    # Pending patches section
     applied_system = _load_applied_system(applied_system_file)
     applied_local = _load_applied_local(applied_local_file)
+    applied_system_set = set(applied_system)
+    applied_local_set = set(applied_local)
 
-    UI.section("check")
-    UI.kv("patches dir", str(patches_dir))
-    UI.kv("system", f"{len([p for p in all_paths if _safe_load_patch(p, True).get('meta', {}).get('scope') == 'system'])} total, {len(selected_system)} pending")
-    UI.kv("local", f"{len([p for p in all_paths if _safe_load_patch(p, True).get('meta', {}).get('scope') == 'local'])} total, {len(selected_local)} pending")
-    UI.kv("system applied", f"{applied_system_file} ({len(applied_system)} applied)")
-    UI.kv("local applied", f"{applied_local_file} ({len(applied_local)} applied)")
-    if ignore_patterns:
-        UI.kv("ignored", ", ".join(ignore_patterns))
+    # Partition valid patches by scope
+    system_patches = []
+    local_patches = []
+    for path, patch in valid_patches.items():
+        scope = patch.get("meta", {}).get("scope")
+        if scope == "system":
+            system_patches.append(path)
+        elif scope == "local":
+            local_patches.append(path)
+
+    # Pending = register:true and not yet applied
+    selected_system = [
+        p for p in system_patches
+        if p.name not in applied_system_set and valid_patches[p].get("meta", {}).get("register", True)
+    ]
+    selected_local = [
+        p for p in local_patches
+        if p.name not in applied_local_set and valid_patches[p].get("meta", {}).get("register", True)
+    ]
+
+    print()
+    print(UI.bold_magenta("PENDING:"))
+    print(UI.bold_cyan("=" * 60))
 
     has_pending = False
 
     if selected_system:
         has_pending = True
-        print("\n  Pending system patches:")
+        print(f"  {UI.bold_green('Pending system patches:')}")
         for path in selected_system:
-            try:
-                patch = load_patch(path, True)
-                meta = patch.get("meta") or {}
-                name = meta.get("name", "")
-                summary = meta.get("summary", "")
-                reg = meta.get("register", False)
-                line = f"  {path.name}"
-                if name:
-                    line += f"  ({name}"
-                line += f", register={reg})"
-                if summary:
-                    line += f" — {summary}"
-                print(line)
-            except Exception as e:
-                _report_file_error(path, e, False)
+            patch = valid_patches[path]
+            meta = patch.get("meta") or {}
+            name = meta.get("name", "")
+            summary = meta.get("summary", "")
+            line = f"    {UI.bold_white(path.name)}"
+            if name:
+                line += f"  {UI.bold_yellow(f'({name}')}"
+            reg = meta.get("register", True)
+            line += f", {UI.bold_cyan(f'register={reg}')})"
+            if summary:
+                line += f" — {UI.bold_magenta(summary)}"
+            print(line)
 
     if selected_local:
         has_pending = True
-        print("\n  Pending local patches:")
+        print(f"  {UI.bold_green('Pending local patches:')}")
         for path in selected_local:
-            try:
-                patch = load_patch(path, True)
-                meta = patch.get("meta") or {}
-                name = meta.get("name", "")
-                summary = meta.get("summary", "")
-                reg = meta.get("register", False)
-                line = f"  {path.name}"
-                if name:
-                    line += f"  ({name}"
-                line += f", register={reg})"
-                if summary:
-                    line += f" — {summary}"
-                print(line)
-            except Exception as e:
-                _report_file_error(path, e, False)
+            patch = valid_patches[path]
+            meta = patch.get("meta") or {}
+            name = meta.get("name", "")
+            summary = meta.get("summary", "")
+            line = f"    {UI.bold_white(path.name)}"
+            if name:
+                line += f"  {UI.bold_yellow(f'({name}')}"
+            reg = meta.get("register", True)
+            line += f", {UI.bold_cyan(f'register={reg}')})"
+            if summary:
+                line += f" — {UI.bold_magenta(summary)}"
+            print(line)
 
     if not has_pending:
-        print(UI.ok("No pending patches."))
-        return 0
+        print(f"  {UI.ok('No pending patches.')}")
 
-    return 1
+    if total_errors or has_pending:
+        return 1
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -1451,14 +1597,16 @@ def show_result_screen():
     if CHANGELOG.patches:
         UI.section("patches")
         for p in CHANGELOG.patches:
-            mark = UI.ok if p["ok"] else UI.err
-            print(f"    {mark(p['name'])}")
+            if p["ok"]:
+                print(f"    {UI.ok(p['name'])}")
+            else:
+                print(f"    {UI.err(p['name'])}")
 
     if CHANGELOG.files:
         UI.section("files")
         for f in CHANGELOG.files:
             badge = UI.badge(f["kind"])
-            print(f"    {badge}  {f['path']}")
+            print(f"    {badge}  {UI.bold_white(f['path'])}")
 
     if CHANGELOG.warnings:
         UI.section("warnings")
@@ -1469,7 +1617,7 @@ def show_result_screen():
         UI.section("diffs (verbose)")
         for f in CHANGELOG.files:
             if f["kind"] in ("edit", "append") and f["before"] is not None and f["after"] is not None:
-                print(f"\n  {UI.bold(f['path'])}")
+                print(f"\n  {UI.bold_magenta(f['path'])}")
                 diff = difflib.unified_diff(
                     f["before"].splitlines(keepends=True),
                     f["after"].splitlines(keepends=True),
@@ -1477,11 +1625,11 @@ def show_result_screen():
                 )
                 for line in diff:
                     if line.startswith("---") or line.startswith("+++"):
-                        print(f"    {UI.dim(line)}")
+                        print(f"    {UI.bold_yellow(line)}")
                     elif line.startswith("-"):
-                        print(f"    {UI.red(line)}")
+                        print(f"    {UI.bold_red(line)}")
                     elif line.startswith("+"):
-                        print(f"    {UI.green(line)}")
+                        print(f"    {UI.bold_green(line)}")
                     else:
                         print(f"    {UI.dim(line)}")
 
@@ -1664,7 +1812,7 @@ Modes:
   n0ct-patch -a                       # apply all patches from default dir
   n0ct-patch -d /path/to/patches      # scan custom directory
   n0ct-patch patch1.yaml patch2.yaml  # apply explicit files (ignores .patchignore)
-  n0ct-patch -c                       # list pending patches (exit 0/1/2)
+  n0ct-patch -c                       # validate + list pending patches (exit 0/1)
   n0ct-patch -c -d /path              # check custom directory
   n0ct-patch --validate               # validate only, no execution
   n0ct-patch -V                       # verbose output with plan + diffs
@@ -1673,7 +1821,7 @@ Modes:
     )
     ap.add_argument("patches", nargs="*", help="explicit patch YAML files to apply")
     ap.add_argument("-n", "--dry-run", action="store_true", help="preview changes without applying")
-    ap.add_argument("-c", "--check", action="store_true", help="list pending patches (exit 0=none, 1=pending, 2=error)")
+    ap.add_argument("-c", "--check", action="store_true", help="validate + list pending patches (exit 0=clean, 1=problem)")
     ap.add_argument("-v", "--validate", action="store_true", help="validate patch schema and nomenclature (exit 0=all valid, 1=any error)")
     ap.add_argument("-V", "--verbose", action="store_true", help="verbose output: plan screen, diffs, extra detail")
     ap.add_argument("-m", "--apply-missing", action="store_true", help="batch: apply unapplied patches from --patches-dir (default if no args)")
@@ -1716,8 +1864,6 @@ Modes:
         ap.error("explicit patch files cannot be combined with --dir/--patches-dir")
     if args.check and has_explicit_files:
         ap.error("--check cannot be used with explicit patch files")
-    if args.validate and args.check:
-        ap.error("--validate cannot be combined with --check")
 
     # Read-only modes don't need sudo
     is_read_only = args.dry_run or args.check or args.validate
@@ -1725,12 +1871,12 @@ Modes:
         _ensure_sudo()
 
     try:
-        if args.validate:
-            exit_code = run_validate(patches_dir, args.patches)
-            sys.exit(exit_code)
-
         if args.check:
             exit_code = run_check(patches_dir, applied_system_file, applied_local_file, args.dry_run)
+            sys.exit(exit_code)
+
+        if args.validate:
+            exit_code = run_validate(patches_dir, args.patches)
             sys.exit(exit_code)
 
         if has_explicit_files:
